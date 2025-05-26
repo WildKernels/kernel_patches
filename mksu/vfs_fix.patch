@@ -1,0 +1,29 @@
+--- a/kernel/ksud.c	2025-03-03 14:45:50.000000000 +0000
++++ b/kernel/ksud.c	2025-03-03 14:56:56.738943243 +0000
+@@ -19,7 +19,12 @@
+ #include "ksud.h"
+ #include "kernel_compat.h"
+ #include "selinux/selinux.h"
+-
++bool ksu_vfs_read_hook = true;
++bool ksu_execveat_hook = true;
++bool ksu_input_hook = true;
++EXPORT_SYMBOL(ksu_vfs_read_hook);
++EXPORT_SYMBOL(ksu_execveat_hook);
++EXPORT_SYMBOL(ksu_input_hook);
+ static const char KERNEL_SU_RC[] =
+ 	"\n"
+ 
+--- a/kernel/ksud.h.orig	2025-03-03 14:45:24.000000000 +0000
++++ b/kernel/ksud.h	2025-03-03 14:56:41.082943249 +0000
+@@ -2,7 +2,9 @@
+ #define __KSU_H_KSUD
+ 
+ #include <linux/types.h>
+-
++extern bool ksu_vfs_read_hook;
++extern bool ksu_execveat_hook;
++extern bool ksu_input_hook;
+ #define KSUD_PATH "/data/adb/ksud"
+ 
+ void ksu_on_post_fs_data(void);
