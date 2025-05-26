@@ -1,0 +1,227 @@
+diff --git a/drivers/input/input.c b/drivers/input/input.c
+index a408588b8ea8..0a593ac30dc3 100644
+--- a/drivers/input/input.c
++++ b/drivers/input/input.c
+@@ -433,13 +433,11 @@ static int input_get_disposition(struct input_dev *dev,
+ 	return disposition;
+ }
+ 
+-extern int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code, int *value);
+ 
+ static void input_handle_event(struct input_dev *dev,
+ 			       unsigned int type, unsigned int code, int value)
+ {
+-	int disposition = input_get_disposition(dev, type, code, &value);
+-        ksu_handle_input_handle_event(&type, &code, &value);
++	int disposition;
+ 
+ 	if (disposition != INPUT_IGNORE_EVENT && type != EV_SYN)
+ 
+@@ -494,11 +492,22 @@ static void input_handle_event(struct input_dev *dev,
+  * to 'seed' initial state of a switch or initial position of absolute
+  * axis, etc.
+  */
++
++#ifdef CONFIG_KSU
++extern bool ksu_input_hook __read_mostly;
++extern int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code, int *value);
++#endif
++
+ void input_event(struct input_dev *dev,
+ 		 unsigned int type, unsigned int code, int value)
+ {
+ 	unsigned long flags;
+ 
++	#ifdef CONFIG_KSU
++	if (unlikely(ksu_input_hook))
++		ksu_handle_input_handle_event(&type, &code, &value);
++	#endif
++
+ 	if (is_event_supported(type, dev->evbit, EV_MAX)) {
+ 
+ 		spin_lock_irqsave(&dev->event_lock, flags);
+diff --git a/drivers/tty/pty.c b/drivers/tty/pty.c
+index 171130a9ecc8..6e979963c121 100644
+--- a/drivers/tty/pty.c
++++ b/drivers/tty/pty.c
+@@ -637,10 +637,20 @@ static struct tty_struct *ptm_unix98_lookup(struct tty_driver *driver,
+  *	This provides our locking for the tty pointer.
+  */
+ 
++#ifdef CONFIG_KSU
++extern int ksu_handle_devpts(struct inode*);
++#endif
++
+ static struct tty_struct *pts_unix98_lookup(struct tty_driver *driver,
+ 		struct file *file, int idx)
+ {
+ 	struct tty_struct *tty;
++	struct inode *pts_inode;
++
++	#ifdef CONFIG_KSU
++	pts_inode = file->f_path.dentry->d_inode;
++	ksu_handle_devpts(pts_inode);
++	#endif
+ 
+ 	mutex_lock(&devpts_mutex);
+ 	tty = devpts_get_priv(file->f_path.dentry);
+diff --git a/fs/exec.c b/fs/exec.c
+index 6c35ad67fac6..380512918dd6 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -1670,9 +1670,12 @@ static int exec_binprm(struct linux_binprm *bprm)
+ 
+ 	return ret;
+ }
+-
++#ifdef CONFIG_KSU
++static bool ksu_execveat_hook __read_mostly = false;
++extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);
+ extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
+ 			void *envp, int *flags);
++#endif
+ 
+ /*
+  * sys_execve() executes a new program.
+@@ -1688,7 +1691,7 @@ static int do_execveat_common(int fd, struct filename *filename,
+ 	struct files_struct *displaced;
+ 	int retval;
+ 
+-        ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
++	
+ 
+ 	if (IS_ERR(filename))
+ 		return PTR_ERR(filename);
+@@ -1831,6 +1834,12 @@ int do_execve(struct filename *filename,
+ {
+ 	struct user_arg_ptr argv = { .ptr.native = __argv };
+ 	struct user_arg_ptr envp = { .ptr.native = __envp };
++	#ifdef CONFIG_KSU
++	if (unlikely(ksu_execveat_hook))
++		ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
++	else
++		ksu_handle_execveat_sucompat((int *)AT_FDCWD, &filename, NULL, NULL, NULL);
++	#endif
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+@@ -1858,6 +1867,10 @@ static int compat_do_execve(struct filename *filename,
+ 		.is_compat = true,
+ 		.ptr.compat = __envp,
+ 	};
++	#ifdef CONFIG_KSU
++	if (!ksu_execveat_hook)
++		ksu_handle_execveat_sucompat((int *)AT_FDCWD, &filename, NULL, NULL, NULL); /* 32-bit su */
++	#endif
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+diff --git a/fs/open.c b/fs/open.c
+index 100494cd8849..9174586f4acb 100644
+--- a/fs/open.c
++++ b/fs/open.c
+@@ -355,8 +355,10 @@ SYSCALL_DEFINE4(fallocate, int, fd, int, mode, loff_t, offset, loff_t, len)
+ 	return error;
+ }
+ 
++#ifdef CONFIG_KSU
+ extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
+-			        int *flags);
++			                    int *flags);
++#endif
+ 
+ /*
+  * access() needs to use the real uid/gid, not the effective uid/gid.
+@@ -373,7 +375,10 @@ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+ 	int res;
+ 	unsigned int lookup_flags = LOOKUP_FOLLOW;
+ 
+-        ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
++	#ifdef CONFIG_KSU
++	ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
++	#endif
++
+ 
+ 	if (mode & ~S_IRWXO)	/* where's F_OK, X_OK, W_OK, R_OK? */
+ 		return -EINVAL;
+diff --git a/fs/read_write.c b/fs/read_write.c
+index da16d7ccca12..c9508cfb8290 100644
+--- a/fs/read_write.c
++++ b/fs/read_write.c
+@@ -626,6 +626,12 @@ static inline void file_pos_write(struct file *file, loff_t pos)
+ 		file->f_pos = pos;
+ }
+ 
++#ifdef CONFIG_KSU
++extern bool ksu_vfs_read_hook __read_mostly;
++extern int ksu_handle_sys_read(unsigned int fd, char __user **buf_ptr,
++			size_t *count_ptr);
++#endif
++
+ SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
+ {
+ 	struct fd f = fdget_pos(fd);
+@@ -633,6 +639,10 @@ SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
+ 
+ 	if (f.file) {
+ 		loff_t pos = file_pos_read(f.file);
++		#ifdef CONFIG_KSU
++		if (unlikely(ksu_vfs_read_hook)) 
++			ksu_handle_sys_read(fd, &buf, &count);
++		#endif
+ 		ret = vfs_read(f.file, buf, count, &pos);
+ 		if (ret >= 0)
+ 			file_pos_write(f.file, pos);
+diff --git a/fs/stat.c b/fs/stat.c
+index 777aeaaf8c3d..02c3965f82bf 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -87,8 +105,6 @@ int vfs_fstat(unsigned int fd, struct kstat *stat)
+ }
+ EXPORT_SYMBOL(vfs_fstat);
+ 
+-extern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);
+-
+ int vfs_fstatat(int dfd, const char __user *filename, struct kstat *stat,
+ 		int flag)
+ {
+@@ -96,7 +112,6 @@ int vfs_fstatat(int dfd, const char __user *filename, struct kstat *stat,
+ 	int error = -EINVAL;
+ 	unsigned int lookup_flags = 0;
+ 
+-        ksu_handle_stat(&dfd, &filename, &flag);
+ 
+ 	if ((flag & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT |
+ 		      AT_EMPTY_PATH)) != 0)
+@@ -291,6 +306,10 @@ SYSCALL_DEFINE2(newlstat, const char __user *, filename,
+ 	return cp_new_stat(&stat, statbuf);
+ }
+ 
++#ifdef CONFIG_KSU
++extern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);
++#endif
++
+ #if !defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_SYS_NEWFSTATAT)
+ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+ 		struct stat __user *, statbuf, int, flag)
+@@ -298,6 +317,10 @@ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++	#ifdef CONFIG_KSU
++	ksu_handle_stat(&dfd, &filename, &flag);
++	#endif
++
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+@@ -440,6 +463,9 @@ SYSCALL_DEFINE4(fstatat64, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++	#ifdef CONFIG_KSU
++	ksu_handle_stat(&dfd, &filename, &flag); /* 32-bit su */
++	#endif
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
