@@ -1,0 +1,80 @@
+--- ./kernel/core_hook.c	2025-05-22 14:38:43.251286100 -0400
++++ ./kernel/core_hook.c	2025-05-22 15:02:32.003703565 -0400
+@@ -1011,12 +1011,35 @@
+ 		return;
+ 	}
+ 
++#if defined(CONFIG_KSU_SUSFS_TRY_UMOUNT) && defined(CONFIG_KSU_SUSFS_ENABLE_LOG)
++	if (susfs_is_log_enabled) {
++		pr_info("susfs: umounting '%s' for uid: %d\n", mnt, uid);
++	}
++#endif
++
+ 	err = ksu_umount_mnt(&path, flags);
+ 	if (err) {
+ 		pr_warn("umount %s failed: %d\n", mnt, err);
+ 	}
+ }
+ 
++#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
++void susfs_try_umount_all(uid_t uid) {
++	susfs_try_umount(uid);
++	/* For Legacy KSU only */
++	ksu_try_umount("/system", true, 0, uid);
++	ksu_try_umount("/system_ext", true, 0, uid);
++	ksu_try_umount("/vendor", true, 0, uid);
++	ksu_try_umount("/product", true, 0, uid);
++	ksu_try_umount("/odm", true, 0, uid);
++	// - For '/data/adb/modules' we pass 'false' here because it is a loop device that we can't determine whether 
++	//   its dev_name is KSU or not, and it is safe to just umount it if it is really a mountpoint
++	ksu_try_umount("/data/adb/modules", false, MNT_DETACH, uid);
++	/* For both Legacy KSU and Magic Mount KSU */
++	ksu_try_umount("/debug_ramdisk", true, MNT_DETACH, uid);
++}
++#endif
++
+ int ksu_handle_setuid(struct cred *new, const struct cred *old)
+ {
+ 	// this hook is used for umounting overlayfs for some uid, if there isn't any module mounted, just ignore it!
+@@ -1095,25 +1118,30 @@
+ 		current->pid);
+ #endif
+ 
++#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
++	// susfs come first, and lastly umount by ksu, make sure umount in reversed order
++	susfs_try_umount_all(new_uid.val);
++#else
+ 	// fixme: use `collect_mounts` and `iterate_mount` to iterate all mountpoint and
+ 	// filter the mountpoint whose target is `/data/adb`
+-	try_umount("/odm", true, 0);
+-	try_umount("/system", true, 0);
+-	try_umount("/system_ext", true, 0);
+-	try_umount("/vendor", true, 0);
+-	try_umount("/product", true, 0);
+-	try_umount("/data/adb/modules", false, MNT_DETACH);
++	ksu_try_umount("/odm", true, 0);
++	ksu_try_umount("/system", true, 0);
++	ksu_try_umount("/system_ext", true, 0);
++	ksu_try_umount("/vendor", true, 0);
++	ksu_try_umount("/product", true, 0);
++	ksu_try_umount("/data/adb/modules", false, MNT_DETACH);
+ 
+ 	// try umount ksu temp path
+-	try_umount("/debug_ramdisk", false, MNT_DETACH);
+-	try_umount("/sbin", false, MNT_DETACH);
++	ksu_try_umount("/debug_ramdisk", false, MNT_DETACH);
++	ksu_try_umount("/sbin", false, MNT_DETACH);
+ 	
+ 	// try umount hosts file
+-	try_umount("/system/etc/hosts", false, MNT_DETACH);
++	ksu_try_umount("/system/etc/hosts", false, MNT_DETACH);
+ 
+ 	// try umount lsposed dex2oat bins
+-	try_umount("/apex/com.android.art/bin/dex2oat64", false, MNT_DETACH);
+-	try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH);
++	ksu_try_umount("/apex/com.android.art/bin/dex2oat64", false, MNT_DETACH);
++	ksu_try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH);
++#endif
+ 
+ 	return 0;
+ }

@@ -1,0 +1,13 @@
+--- ./kernel/sucompat.c	2025-05-13 05:33:47.755268700 -0400
++++ ./kernel/sucompat.c	2025-05-13 16:40:23.611765698 -0400
+@@ -13,6 +13,10 @@
+ #else
+ #include <linux/sched.h>
+ #endif
++#ifdef CONFIG_KSU_SUSFS_SUS_SU
++#include <linux/susfs_def.h>
++#endif
++ 
+ 
+ #include "objsec.h"
+ #include "allowlist.h"
