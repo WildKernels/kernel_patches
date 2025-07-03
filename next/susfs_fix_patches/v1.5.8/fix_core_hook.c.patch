@@ -1,6 +1,6 @@
 --- ./kernel/core_hook.c	2025-05-22 14:38:43.251286100 -0400
 +++ ./kernel/core_hook.c	2025-05-22 15:02:32.003703565 -0400
-@@ -48,24 +48,100 @@
+@@ -48,24 +48,95 @@
  #include "manager.h"
  #include "selinux/selinux.h"
  #include "throne_tracker.h"
@@ -59,11 +59,6 @@
 +		path_put(&path);
 +	}
 +	pr_info("susfs_is_umount_for_zygote_system_process_enabled: %d\n", susfs_is_umount_for_zygote_system_process_enabled);
-+	if (!kern_path(DATA_ADB_UMOUNT_FOR_ZYGOTE_ISO_SERVICE, 0, &path)) {
-+		susfs_is_umount_for_zygote_iso_service_enabled = true;
-+		path_put(&path);
-+	}
-+	pr_info("susfs_is_umount_for_zygote_iso_service_enabled: %d\n", susfs_is_umount_for_zygote_iso_service_enabled);
 +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 +#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
 +	if (!kern_path(DATA_ADB_NO_AUTO_ADD_SUS_BIND_MOUNT, 0, &path)) {
