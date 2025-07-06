@@ -1,0 +1,190 @@
+--- ./kernel/core_hook.c	2025-05-22 14:38:43.251286100 -0400
++++ ./kernel/core_hook.c	2025-05-22 15:02:32.003703565 -0400
+@@ -48,24 +48,95 @@
+ #include "manager.h"
+ #include "selinux/selinux.h"
+ #include "throne_tracker.h"
+-#include "throne_tracker.h"
+ #include "kernel_compat.h"
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0) || defined(KSU_COMPAT_GET_CRED_RCU)
+ #define KSU_GET_CRED_RCU
+ #endif
+ 
+-static bool ksu_module_mounted = false;
++#ifdef CONFIG_KSU_SUSFS
++bool susfs_is_allow_su(void)
++{
++	if (ksu_is_manager()) {
++		// we are manager, allow!
++		return true;
++	}
++	return ksu_is_allow_uid(current_uid().val);
++}
++
++extern u32 susfs_zygote_sid;
++extern bool susfs_is_mnt_devname_ksu(struct path *path);
++#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
++extern bool susfs_is_log_enabled __read_mostly;
++#endif
++#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
++extern void susfs_run_try_umount_for_current_mnt_ns(void);
++#endif // #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
++#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
++static bool susfs_is_umount_for_zygote_system_process_enabled = false;
++static bool susfs_is_umount_for_zygote_iso_service_enabled = false;
++extern bool susfs_hide_sus_mnts_for_all_procs;
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
++#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
++extern bool susfs_is_auto_add_sus_bind_mount_enabled;
++#endif // #ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
++#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
++extern bool susfs_is_auto_add_sus_ksu_default_mount_enabled;
++#endif // #ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
++#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
++extern bool susfs_is_auto_add_try_umount_for_bind_mount_enabled;
++#endif // #ifdef CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
++#ifdef CONFIG_KSU_SUSFS_SUS_SU
++extern bool susfs_is_sus_su_ready;
++extern int susfs_sus_su_working_mode;
++extern bool susfs_is_sus_su_hooks_enabled __read_mostly;
++extern bool ksu_devpts_hook;
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_SU
++
++static inline void susfs_on_post_fs_data(void) {
++	struct path path;
++#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
++	if (!kern_path(DATA_ADB_UMOUNT_FOR_ZYGOTE_SYSTEM_PROCESS, 0, &path)) {
++		susfs_is_umount_for_zygote_system_process_enabled = true;
++		path_put(&path);
++	}
++	pr_info("susfs_is_umount_for_zygote_system_process_enabled: %d\n", susfs_is_umount_for_zygote_system_process_enabled);
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
++#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
++	if (!kern_path(DATA_ADB_NO_AUTO_ADD_SUS_BIND_MOUNT, 0, &path)) {
++		susfs_is_auto_add_sus_bind_mount_enabled = false;
++		path_put(&path);
++	}
++	pr_info("susfs_is_auto_add_sus_bind_mount_enabled: %d\n", susfs_is_auto_add_sus_bind_mount_enabled);
++#endif // #ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
++#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
++	if (!kern_path(DATA_ADB_NO_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT, 0, &path)) {
++		susfs_is_auto_add_sus_ksu_default_mount_enabled = false;
++		path_put(&path);
++	}
++	pr_info("susfs_is_auto_add_sus_ksu_default_mount_enabled: %d\n", susfs_is_auto_add_sus_ksu_default_mount_enabled);
++#endif // #ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
++#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
++	if (!kern_path(DATA_ADB_NO_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT, 0, &path)) {
++		susfs_is_auto_add_try_umount_for_bind_mount_enabled = false;
++		path_put(&path);
++	}
++	pr_info("susfs_is_auto_add_try_umount_for_bind_mount_enabled: %d\n", susfs_is_auto_add_try_umount_for_bind_mount_enabled);
++#endif // #ifdef CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
++}
++#endif // #ifdef CONFIG_KSU_SUSFS
++
++bool ksu_module_mounted = false;
+ 
+-extern int handle_sepolicy(unsigned long arg3, void __user *arg4);
++extern int ksu_handle_sepolicy(unsigned long arg3, void __user *arg4);
+ 
+-static bool ksu_su_compat_enabled = true;
++bool ksu_su_compat_enabled = true;
+ extern void ksu_sucompat_init();
+ extern void ksu_sucompat_exit();
+ 
+ static inline bool is_allow_su()
+ {
+-	if (is_manager()) {
++	if (ksu_is_manager()) {
+ 		// we are manager, allow!
+ 		return true;
+ 	}
+@@ -1024,12 +1024,43 @@
+ 		return;
+ 	}
+ 
++#if defined(CONFIG_KSU_SUSFS_TRY_UMOUNT) && defined(CONFIG_KSU_SUSFS_ENABLE_LOG)
++	if (susfs_is_log_enabled) {
++		pr_info("susfs: umounting '%s' for uid: %d\n", mnt, uid);
++	}
++#endif
++
+ 	err = ksu_umount_mnt(&path, flags);
+ 	if (err) {
+ 		pr_warn("umount %s failed: %d\n", mnt, err);
+ 	}
+ }
+ 
++#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
++void susfs_try_umount_all(uid_t uid) {
++	susfs_try_umount(uid);
++	/* For Legacy KSU only */
++	ksu_try_umount("/system", true, 0, uid);
++	ksu_try_umount("/system_ext", true, 0, uid);
++	ksu_try_umount("/vendor", true, 0, uid);
++	ksu_try_umount("/product", true, 0, uid);
++	ksu_try_umount("/odm", true, 0, uid);
++	// - For '/data/adb/modules' we pass 'false' here because it is a loop device that we can't determine whether 
++	//   its dev_name is KSU or not, and it is safe to just umount it if it is really a mountpoint
++	ksu_try_umount("/data/adb/modules", false, MNT_DETACH, uid);
++	/* For both Legacy KSU and Magic Mount KSU */
++	ksu_try_umount("/debug_ramdisk", true, MNT_DETACH, uid);
++	ksu_try_umount("/sbin", false, MNT_DETACH, uid);
++
++	// try umount hosts file
++	ksu_try_umount("/system/etc/hosts", false, MNT_DETACH, uid);
++
++	// try umount lsposed dex2oat bins
++	ksu_try_umount("/apex/com.android.art/bin/dex2oat64", false, MNT_DETACH, uid);
++	ksu_try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH, uid);
++}
++#endif
++
+ int ksu_handle_setuid(struct cred *new, const struct cred *old)
+ {
+ 	// this hook is used for umounting overlayfs for some uid, if there isn't any module mounted, just ignore it!
+@@ -1108,25 +1139,31 @@
+ 		current->pid);
+ #endif
+ 
++#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
++ out_susfs_try_umount_all:
++	// susfs come first, and lastly umount by ksu, make sure umount in reversed order
++	susfs_try_umount_all(new_uid.val);
++#else
+ 	// fixme: use `collect_mounts` and `iterate_mount` to iterate all mountpoint and
+ 	// filter the mountpoint whose target is `/data/adb`
+-	try_umount("/odm", true, 0);
+-	try_umount("/system", true, 0);
+-	try_umount("/system_ext", true, 0);
+-	try_umount("/vendor", true, 0);
+-	try_umount("/product", true, 0);
+-	try_umount("/data/adb/modules", false, MNT_DETACH);
++	ksu_try_umount("/odm", true, 0);
++	ksu_try_umount("/system", true, 0);
++	ksu_try_umount("/system_ext", true, 0);
++	ksu_try_umount("/vendor", true, 0);
++	ksu_try_umount("/product", true, 0);
++	ksu_try_umount("/data/adb/modules", false, MNT_DETACH);
+ 
+ 	// try umount ksu temp path
+-	try_umount("/debug_ramdisk", false, MNT_DETACH);
+-	try_umount("/sbin", false, MNT_DETACH);
++	ksu_try_umount("/debug_ramdisk", false, MNT_DETACH);
++	ksu_try_umount("/sbin", false, MNT_DETACH);
+ 
+ 	// try umount hosts file
+-	try_umount("/system/etc/hosts", false, MNT_DETACH);
++	ksu_try_umount("/system/etc/hosts", false, MNT_DETACH);
+ 
+ 	// try umount lsposed dex2oat bins
+-	try_umount("/apex/com.android.art/bin/dex2oat64", false, MNT_DETACH);
+-	try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH);
++	ksu_try_umount("/apex/com.android.art/bin/dex2oat64", false, MNT_DETACH);
++	ksu_try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH);
++#endif
+ 
+ 	return 0;
+ }

@@ -1,0 +1,20 @@
+--- ./kernel/selinux/selinux.c	2025-05-22 14:38:43.251286100 -0400
++++ ./kernel/selinux/selinux.c	2025-05-22 14:56:15.801947652 -0400
+@@ -60,7 +60,7 @@
+ }*/
+ }
+ 
+-void setenforce(bool enforce)
++void ksu_setenforce(bool enforce)
+ {
+ #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
+ #ifdef KSU_COMPAT_USE_SELINUX_STATE
+@@ -71,7 +71,7 @@
+ #endif
+ }
+ 
+-bool getenforce()
++bool ksu_getenforce()
+ {
+ #ifdef CONFIG_SECURITY_SELINUX_DISABLE
+ #ifdef KSU_COMPAT_USE_SELINUX_STATE
