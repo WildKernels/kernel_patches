@@ -1,0 +1,121 @@
+diff --git a/kernel/sucompat.c b/kernel/sucompat.c
+index c1e803d7..1e8f98e6 100644
+--- a/kernel/sucompat.c
++++ b/kernel/sucompat.c
+@@ -38,37 +38,37 @@ static void __user *userspace_stack_buffer(const void *d, size_t len)
+ 	return copy_to_user(p, d, len) ? NULL : p;
+ }
+ 
+-static char __user *sh_user_path(void)
++static inline char __user *sh_user_path(void)
+ {
+-	static const char sh_path[] = "/system/bin/sh";
+-
+ 	return userspace_stack_buffer(sh_path, sizeof(sh_path));
+ }
+ 
+-static char __user *ksud_user_path(void)
++static inline char __user *ksud_user_path(void)
+ {
+-	static const char ksud_path[] = KSUD_PATH;
+-
+ 	return userspace_stack_buffer(ksud_path, sizeof(ksud_path));
+ }
+ 
+ int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
+ 			 int *__unused_flags)
+ {
+-	const char su[] = SU_PATH;
+-
+ #ifndef CONFIG_KSU_KPROBES_HOOK
+ 	if (!ksu_sucompat_non_kp) {
+ 		return 0;
+ 	}
+ #endif
+ 
++#ifndef CONFIG_KSU_SUSFS_SUS_SU
+ 	if (!ksu_is_allow_uid(current_uid().val)) {
+ 		return 0;
+ 	}
++#endif
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_SU
++	char path[sizeof(su)] = {0};
++#else
+ 	char path[sizeof(su) + 1];
+ 	memset(path, 0, sizeof(path));
++#endif
+ 	ksu_strncpy_from_user_nofault(path, *filename_user, sizeof(path));
+ 
+ 	if (unlikely(!memcmp(path, su, sizeof(su)))) {
+@@ -73,27 +86,49 @@ int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
+ 	return 0;
+ }
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0) && defined(CONFIG_KSU_SUSFS_SUS_SU)
++struct filename* susfs_ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags) {
++	struct filename *name = getname_flags(*filename_user, getname_statx_lookup_flags(*flags), NULL);
++
++	if (unlikely(IS_ERR(name) || name->name == NULL)) {
++		return name;
++	}
++
++	if (likely(memcmp(name->name, su, sizeof(su)))) {
++		return name;
++	}
++
++	const char sh[] = SH_PATH;
++	pr_info("vfs_fstatat su->sh!\n");
++	memcpy((void *)name->name, sh, sizeof(sh));
++	return name;
++}
++#endif
++
+ int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags)
+ {
+-	// const char sh[] = SH_PATH;
+-	const char su[] = SU_PATH;
+-
+ #ifndef CONFIG_KSU_KPROBES_HOOK
+ 	if (!ksu_sucompat_non_kp){
+ 		return 0;
+ 	}
+ #endif
+ 
++#ifndef CONFIG_KSU_SUSFS_SUS_SU
+ 	if (!ksu_is_allow_uid(current_uid().val)) {
+ 		return 0;
+ 	}
++#endif
+ 
+ 	if (unlikely(!filename_user)) {
+ 		return 0;
+ 	}
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_SU
++	char path[sizeof(su)] = {0};
++#else
+ 	char path[sizeof(su) + 1];
+ 	memset(path, 0, sizeof(path));
++#endif
+ // Remove this later!! we use syscall hook, so this will never happen!!!!!
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) && 0
+ 	// it becomes a `struct filename *` after 5.18
+@@ -148,11 +183,15 @@ int ksu_handle_execve_sucompat(int *fd, const char __user **filename_user,
+ 			       void *__never_use_argv, void *__never_use_envp,
+ 			       int *__never_use_flags)
+ {
+-	const char su[] = SU_PATH;
++	//const char su[] = SU_PATH;
++#ifdef CONFIG_KSU_SUSFS_SUS_SU
++	char path[sizeof(su)] = {0};
++#else
+-	char path[sizeof(su) + 1];
++	char path[sizeof(su) + 1] = {0};
++#endif
+ 
+ #ifndef CONFIG_KSU_KPROBES_HOOK
+ 	if (!ksu_sucompat_non_kp) {
+ 		return 0;
+ 	}
+ #endif
