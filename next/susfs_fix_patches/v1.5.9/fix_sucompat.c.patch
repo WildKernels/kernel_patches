@@ -2,6 +2,24 @@ diff --git a/kernel/sucompat.c b/kernel/sucompat.c
 index c1e803d7..1e8f98e6 100644
 --- a/kernel/sucompat.c
 +++ b/kernel/sucompat.c
+@@ -9,14 +9,17 @@
+ #include <linux/uaccess.h>
+ #include <linux/version.h>
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
+ #include <linux/sched/task_stack.h>
+ #else
+ #include <linux/sched.h>
+ #endif
++#ifdef CONFIG_KSU_SUSFS_SUS_SU
++#include <linux/susfs_def.h>
++#endif
+
+ #include "objsec.h"
+ #include "allowlist.h"
+ #include "arch.h"
+ #include "klog.h" // IWYU pragma: keep
+ #include "ksud.h"
+ #include "kernel_compat.h"
 @@ -38,37 +38,37 @@ static void __user *userspace_stack_buffer(const void *d, size_t len)
  	return copy_to_user(p, d, len) ? NULL : p;
  }
