@@ -1,6 +1,6 @@
---- ./kernel/ksud.c	2025-05-22 14:52:56.039963900 -0400
-+++ ./kernel/ksud.c	2025-05-22 14:53:18.150237090 -0400
-@@ -64,6 +64,10 @@
+--- ./kernel/ksud.c	2025-07-27 11:40:16.519145057 +0200
++++ ./kernel/ksud.c	2025-07-27 12:02:13.358995297 +0200
+@@ -64,21 +64,25 @@
  bool ksu_input_hook __read_mostly = true;
  #endif
  
@@ -11,7 +11,6 @@
  u32 ksu_devpts_sid;
  
  #ifdef CONFIG_COMPAT
-@@ -71,15 +74,15 @@
  bool ksu_is_compat __read_mostly = false;
  #endif
  
