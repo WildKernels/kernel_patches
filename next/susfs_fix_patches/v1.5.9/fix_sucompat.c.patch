@@ -10,7 +10,7 @@
  
  #include "objsec.h"
  #include "allowlist.h"
-@@ -43,37 +46,37 @@
+@@ -39,37 +42,32 @@
  	return copy_to_user(p, d, len) ? NULL : p;
  }
  
@@ -47,16 +47,13 @@
  	}
 +#endif
  
-+#ifdef CONFIG_KSU_SUSFS_SUS_SU
+-	char path[sizeof(su) + 1];
 +	char path[sizeof(su) + 1] = {0};
-+#else
- 	char path[sizeof(su) + 1];
- 	memset(path, 0, sizeof(path));
-+#endif
+-	memset(path, 0, sizeof(path));
  	ksu_strncpy_from_user_nofault(path, *filename_user, sizeof(path));
  
  	if (unlikely(!memcmp(path, su, sizeof(su)))) {
-@@ -84,27 +87,49 @@
+@@ -80,27 +78,44 @@
  	return 0;
  }
  
@@ -100,26 +97,19 @@
  		return 0;
  	}
  
-+#ifdef CONFIG_KSU_SUSFS_SUS_SU
+-	char path[sizeof(su) + 1];
 +	char path[sizeof(su) + 1] = {0};
-+#else
- 	char path[sizeof(su) + 1];
- 	memset(path, 0, sizeof(path));
-+#endif
+-	memset(path, 0, sizeof(path));
  // Remove this later!! we use syscall hook, so this will never happen!!!!!
  #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) && 0
  	// it becomes a `struct filename *` after 5.18
-@@ -171,8 +196,12 @@
+@@ -167,8 +182,7 @@ int ksu_handle_execve_sucompat(int *fd, const char __user **filename_user,
  			       void *__never_use_argv, void *__never_use_envp,
  			       int *__never_use_flags)
  {
 -	const char su[] = SU_PATH;
-+	//const char su[] = SU_PATH;
-+#ifdef CONFIG_KSU_SUSFS_SUS_SU
+-	char path[sizeof(su) + 1];
 +	char path[sizeof(su) + 1] = {0};
-+#else
- 	char path[sizeof(su) + 1];
-+#endif
  
  #ifndef CONFIG_KSU_KPROBES_HOOK
  	if (!ksu_sucompat_non_kp) {
