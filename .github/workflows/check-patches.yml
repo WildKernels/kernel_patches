@@ -1,0 +1,65 @@
+name: Check KSU SUSFS Patches for Conflicts
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  pull_request:
+  push:
+    paths-ignore:
+      - 'README.md'
+  schedule:
+   - cron: "0 */6 * * *"
+
+jobs:
+  ksu:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        ksu:
+          - name: NEXT
+            repo_url: "https://github.com/KernelSU-Next/KernelSU-Next"
+            branch: "next"
+            patches_dir: "next/susfs_fix_patches/v1.5.9"
+          - name: WILD
+            repo_url: "https://github.com/WildKernels/Wild_KSU"
+            branch: "wild"
+            patches_dir: "wild/susfs_fix_patches/1.5.9"
+
+    steps:
+      - name: Patch KernelSU with SUSFS patch
+        run: |
+          set -e
+
+          git clone --depth=1 "https://github.com/${{ github.repository }}" "kernel_patches"
+          PATCHES_DIR="$PWD/kernel_patches/${{ matrix.ksu.patches_dir }}"
+          git clone --depth=1 "https://gitlab.com/simonpunk/susfs4ksu.git" -b "gki-android14-6.1" "susfs"
+          git clone "${{ matrix.ksu.repo_url }}" -b ${{ matrix.ksu.branch }} "KSU"
+
+          cd KSU
+          case "${{ matrix.ksu.name }}" in
+            "WILD")
+              BASE_VERSION=10200
+              ;;
+            "KSU")
+              BASE_VERSION=10200
+              ;;
+            "NEXT")
+              BASE_VERSION=10200
+              ;;
+            "MKSU")
+              BASE_VERSION=10200
+              ;;
+          esac
+          KSU_V=$(expr $(/usr/bin/git rev-list --count HEAD) "+" $BASE_VERSION)
+
+          echo "--- Patching ${{ matrix.ksu.name }} $KSU_V ---"
+          patch -p1 --forward < "../susfs/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
+
+          cp -r "$PATCHES_DIR"/* .
+          for patch_name in *.patch; do
+            echo "--- Applying ${patch_name} ---"
+            patch -p1 --forward < "${patch_name}"
+          done
