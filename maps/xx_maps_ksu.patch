@@ -1,0 +1,125 @@
+diff --git a/kernel/core_hook.c b/kernel/core_hook.c
+index 5ee67dd61905..065b1dced777 100644
+--- a/kernel/core_hook.c
++++ b/kernel/core_hook.c
+@@ -281,10 +281,19 @@
+         }
+     }
+     return false;
+ }
+ 
++struct string_entry {
++    char *string;
++    struct list_head list;
++};
++LIST_HEAD(maps_string_list);
++
++atomic_t skip_rwxp = ATOMIC_INIT(0);
++EXPORT_SYMBOL(skip_rwxp); 
++
+ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
+ 		     unsigned long arg4, unsigned long arg5)
+ {
+ 	// if success, we modify the arg5 as result!
+ 	u32 *result = (u32 *)arg5;
+@@ -320,10 +329,80 @@
+ 
+ #ifdef CONFIG_KSU_DEBUG
+ 	pr_info("option: 0x%x, cmd: %ld\n", option, arg2);
+ #endif
+ 
++
++	if (arg2 == CMD_ADD_TO_HIDE_MAP_LIST) {
++		struct string_entry *new_entry, *entry;
++		char buf[64];
++		memzero_explicit(buf, 64);
++	
++		if (copy_from_user(buf, (const char __user *)arg3, sizeof(buf) - 1)) {
++			pr_err("cmd_add_try_umount: failed to copy user string\n");
++			return 0;
++		}
++		buf[64 - 1] = '\0';
++		
++		new_entry = kmalloc(sizeof(*new_entry), GFP_KERNEL);
++		if (!new_entry)
++			return 0;
++
++		new_entry->string = kstrdup(buf, GFP_KERNEL);		
++		if (!new_entry->string) {
++			kfree(new_entry);
++			return 0;
++		}
++		
++		list_for_each_entry(entry, &maps_string_list, list) {
++			if (!strcmp(entry->string, buf))
++				return 0;
++		}	
++		
++		pr_info("entry: %s added!\n", buf);
++		list_add(&new_entry->list, &maps_string_list);
++		smp_mb();
++		
++		unsigned long result = 0x54321;
++		if (copy_to_user((void __user *)arg5, &result, sizeof(result)))
++			return 0;
++	}
++	
++	if (arg2 == CMD_CLEAR_HIDE_MAP_LIST) {
++		struct string_entry *entry, *tmp;
++
++		list_for_each_entry_safe(entry, tmp, &maps_string_list, list) {
++			pr_info("entry: %s removed!\n", entry->string);
++			list_del(&entry->list);
++			kfree(entry->string);
++			kfree(entry);
++		}
++		
++		smp_mb();
++
++		unsigned long result = 0x54321;
++		if (copy_to_user((void __user *)arg5, &result, sizeof(result)))
++			return 0;
++	}
++
++	if (arg2 == CMD_SKIP_RWXP_ENABLE) {
++		unsigned long result;
++		atomic_set(&skip_rwxp, 1);
++		result = 0x1;
++		
++		if (copy_to_user((void __user *)arg5, &result, sizeof(result)))
++			return 0;
++	}
++
++	if (arg2 == CMD_SKIP_RWXP_DISABLE) {
++		unsigned long result;
++		atomic_set(&skip_rwxp, 0);
++		result = 0x0;
++		if (copy_to_user((void __user *)arg5, &result, sizeof(result)))
++			return 0;
++	}
++
+ 	if (arg2 == CMD_BECOME_MANAGER) {
+ 		if (from_manager) {
+ 			if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
+ 				pr_err("become_manager: prctl reply error\n");
+ 			}
+diff --git a/kernel/ksu.h b/kernel/ksu.h
+index ab4115a6e7ef..4f73241b1a7f 100644
+--- a/kernel/ksu.h
++++ b/kernel/ksu.h
+@@ -6,10 +6,15 @@
+ 
+ #define KERNEL_SU_VERSION KSU_VERSION
+ #define KERNEL_SU_VERSION_TAG KSU_VERSION_TAG
+ #define KERNEL_SU_OPTION 0xDEADBEEF
+ 
++#define CMD_ADD_TO_HIDE_MAP_LIST 0x11001
++#define CMD_CLEAR_HIDE_MAP_LIST 0x11002
++#define CMD_SKIP_RWXP_ENABLE 0x11003
++#define CMD_SKIP_RWXP_DISABLE 0x11004
++
+ #define CMD_GRANT_ROOT 0
+ #define CMD_BECOME_MANAGER 1
+ #define CMD_GET_VERSION 2
+ #define CMD_ALLOW_SU 3
+ #define CMD_DENY_SU 4

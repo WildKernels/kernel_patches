@@ -1,0 +1,74 @@
+diff --git a/fs/proc/task_mmu.c b/fs/proc/task_mmu.c
+index ab4115a6e7ef..4f73241b1a7f 100644
+--- a/fs/proc/task_mmu.c
++++ b/fs/proc/task_mmu.c
+@@ -87,10 +87,18 @@
+ unsigned long task_vsize(struct mm_struct *mm)
+ {
+ 	return PAGE_SIZE * mm->total_vm;
+ }
+ 
++struct string_entry {
++    char *string;
++    struct list_head list;
++};
++extern struct list_head maps_string_list; // this is on ksu's core_hook.c
++
++extern atomic_t skip_rwxp;
++
+ unsigned long task_statm(struct mm_struct *mm,
+ 			 unsigned long *shared, unsigned long *text,
+ 			 unsigned long *data, unsigned long *resident)
+ {
+ 	*shared = get_mm_counter(mm, MM_FILEPAGES) +
+@@ -286,10 +294,29 @@
+ 	unsigned long long pgoff = 0;
+ 	unsigned long start, end;
+ 	dev_t dev = 0;
+ 	const char *name = NULL;
+ 
++	struct string_entry *entry, *tmp;
++
++	// skip rwxp and two entries after it
++	if (atomic_read(&skip_rwxp)) {
++		static int skip_count = 0;	
++		if (skip_count > 0) {
++			skip_count--;
++			seq_printf(m, "%08lx-%08lx ---- 00000000 00:00 0  \n",vma->vm_start, vma->vm_end);
++			
++			return;
++		}
++		
++		if ((vma->vm_flags & (VM_READ | VM_WRITE | VM_EXEC)) == (VM_READ | VM_WRITE | VM_EXEC) && !(vma->vm_flags & VM_MAYSHARE)) {
++			seq_printf(m, "%08lx-%08lx ---- 00000000 00:00 0  \n",vma->vm_start, vma->vm_end);
++			skip_count = 2;
++			return;
++		}
++	}
++
+ 	if (file) {
+ 		struct inode *inode = file_inode(vma->vm_file);
+ #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+ 		if (unlikely(inode->i_mapping->flags & BIT_SUS_KSTAT)) {
+ 			susfs_sus_ino_for_show_map_vma(inode->i_ino, &dev, &ino);
+@@ -300,10 +327,20 @@
+ 		ino = inode->i_ino;
+ #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+ bypass_orig_flow:
+ #endif
+ 		pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
++
++		if (file->f_path.dentry) {
++			smp_mb();
++			list_for_each_entry_safe(entry, tmp, &maps_string_list, list) {
++				if (strstr(file->f_path.dentry->d_name.name, entry->string)) {
++					seq_printf(m, "%08lx-%08lx ---- 00000000 00:00 0  \n",vma->vm_start, vma->vm_end);
++					return;
++				}
++			}
++		}
+ 	}
+ 
+ 	start = vma->vm_start;
+ 	end = vma->vm_end;
+ 	show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino);
