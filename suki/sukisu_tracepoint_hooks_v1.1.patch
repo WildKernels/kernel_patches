@@ -1,0 +1,159 @@
+---
+ drivers/input/input.c |  8 ++++++++
+ fs/exec.c             | 10 ++++++++++
+ fs/open.c             |  7 +++++++
+ fs/read_write.c       |  7 +++++++
+ fs/stat.c             | 12 ++++++++++++
+ 5 files changed, 44 insertions(+)
+
+diff --git a/drivers/input/input.c b/drivers/input/input.c
+index 171f71bd4..0498334ce 100644
+--- a/drivers/input/input.c
++++ b/drivers/input/input.c
+@@ -26,6 +26,10 @@
+ #include "input-compat.h"
+ #include "input-poller.h"
+ 
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
++#include <../../drivers/kernelsu/ksu_trace.h>
++#endif
++
+ MODULE_AUTHOR("Vojtech Pavlik <vojtech@suse.cz>");
+ MODULE_DESCRIPTION("Input core");
+ MODULE_LICENSE("GPL");
+@@ -451,6 +455,10 @@ void input_event(struct input_dev *dev,
+ {
+ 	unsigned long flags;
+ 
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
++    trace_ksu_trace_input_hook(&type, &code, &value);
++#endif
++
+ 	if (is_event_supported(type, dev->evbit, EV_MAX)) {
+ 
+ 		spin_lock_irqsave(&dev->event_lock, flags);
+diff --git a/fs/exec.c b/fs/exec.c
+index b1b9db56a..0252689da 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -78,6 +78,10 @@
+ #include <trace/hooks/sched.h>
+ #endif
+ 
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
++#include <../drivers/kernelsu/ksu_trace.h>
++#endif
++
+ EXPORT_TRACEPOINT_SYMBOL_GPL(task_rename);
+ 
+ static int bprm_creds_from_file(struct linux_binprm *bprm);
+@@ -2037,6 +2041,9 @@ static int do_execve(struct filename *filename,
+ {
+ 	struct user_arg_ptr argv = { .ptr.native = __argv };
+ 	struct user_arg_ptr envp = { .ptr.native = __envp };
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
++    trace_ksu_trace_execveat_hook((int *)AT_FDCWD, &filename, &argv, &envp, 0);
++#endif
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+@@ -2064,6 +2071,9 @@ static int compat_do_execve(struct filename *filename,
+ 		.is_compat = true,
+ 		.ptr.compat = __envp,
+ 	};
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
++    trace_ksu_trace_execveat_hook((int *)AT_FDCWD, &filename, &argv, &envp, 0); // 32-bit su and 32-on-64 support
++#endif
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+diff --git a/fs/open.c b/fs/open.c
+index 39779f1ba..f88cae1bb 100644
+--- a/fs/open.c
++++ b/fs/open.c
+@@ -37,6 +37,10 @@
+ #include "internal.h"
+ #include <trace/hooks/syscall_check.h>
+ 
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
++#include <../drivers/kernelsu/ksu_trace.h>
++#endif
++
+ int do_truncate(struct user_namespace *mnt_userns, struct dentry *dentry,
+ 		loff_t length, unsigned int time_attrs, struct file *filp)
+ {
+@@ -468,6 +472,9 @@ static long do_faccessat(int dfd, const char __user *filename, int mode, int fla
+ 
+ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+ {
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
++	trace_ksu_trace_faccessat_hook(&dfd, &filename, &mode, NULL);
++#endif
+ 	return do_faccessat(dfd, filename, mode, 0);
+ }
+ 
+diff --git a/fs/read_write.c b/fs/read_write.c
+index 3f6818620..926176dfe 100644
+--- a/fs/read_write.c
++++ b/fs/read_write.c
+@@ -25,6 +25,10 @@
+ #include <linux/uaccess.h>
+ #include <asm/unistd.h>
+ 
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
++#include <../drivers/kernelsu/ksu_trace.h>
++#endif
++
+ const struct file_operations generic_ro_fops = {
+ 	.llseek		= generic_file_llseek,
+ 	.read_iter	= generic_file_read_iter,
+@@ -630,6 +634,9 @@ ssize_t ksys_read(unsigned int fd, char __user *buf, size_t count)
+ 
+ SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
+ {
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
++    trace_ksu_trace_sys_read_hook(fd, &buf, &count);
++#endif
+ 	return ksys_read(fd, buf, count);
+ }
+ 
+diff --git a/fs/stat.c b/fs/stat.c
+index 357a1db41..a2d759e48 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -24,6 +24,10 @@
+ #include "internal.h"
+ #include "mount.h"
+ 
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
++#include <../drivers/kernelsu/ksu_trace.h>
++#endif
++
+ /**
+  * generic_fillattr - Fill in the basic attributes from the inode struct
+  * @mnt_userns:	user namespace of the mount the inode was found from
+@@ -408,6 +412,10 @@ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
++	trace_ksu_trace_stat_hook(&dfd, &filename, &flag);
++#endif
++
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+@@ -559,6 +567,10 @@ SYSCALL_DEFINE4(fstatat64, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
++	trace_ksu_trace_stat_hook(&dfd, &filename, &flag); /* 32-bit su support */
++#endif
++
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+-- 
+2.34.1
+
