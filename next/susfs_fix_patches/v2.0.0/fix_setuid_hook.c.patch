@@ -1,0 +1,12 @@
+--- a/kernel/setuid_hook.c
++++ b/kernel/setuid_hook.c
+@@ -26,6 +26,9 @@
+ #include <linux/types.h>
+ #include <linux/uaccess.h>
+ #include <linux/uidgid.h>
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs.h>
++#endif // #ifdef CONFIG_KSU_SUSFS
+ #include <linux/version.h>
+ 
+ #include "allowlist.h"
