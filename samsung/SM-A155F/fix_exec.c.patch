@@ -1,0 +1,18 @@
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -62,10 +62,15 @@
+ #include <linux/fs_struct.h>
+ #include <linux/oom.h>
+ #include <linux/compat.h>
+ #include <linux/vmalloc.h>
+ #include <linux/io_uring.h>
++
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs_def.h>
++#endif
++
+ #include <linux/task_integrity.h>
+ 
+ #include <linux/uaccess.h>
+ #include <asm/mmu_context.h>
+ #include <asm/tlb.h>
