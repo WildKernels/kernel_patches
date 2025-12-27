@@ -1,16 +1,17 @@
 diff --git a/kernel/sucompat.c b/kernel/sucompat.c
-index 4e5db588..4489b1fb 100644
+index 53967ce9..f38f0d24 100644
 --- a/kernel/sucompat.c
 +++ b/kernel/sucompat.c
-@@ -220,6 +220,7 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
-         return 0;
+@@ -221,7 +221,7 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
  
      pr_info("ksu_handle_execveat_sucompat: su found\n");
-+	write_sulog('x');
      memcpy((void *)filename->name, ksud_path, sizeof(ksud_path));
- 
+-
++	write_sulog('x');
      escape_with_root_profile();
-@@ -246,6 +247,7 @@ int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
+ 
+     return 0;
+@@ -246,6 +246,7 @@ int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
  
      if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
          pr_info("ksu_handle_faccessat: su->sh!\n");
@@ -18,15 +19,15 @@ index 4e5db588..4489b1fb 100644
          *filename_user = sh_user_path();
      }
  
-@@ -265,6 +267,7 @@ int ksu_handle_stat(int *dfd, struct filename **filename, int *flags) {
-     }
+@@ -266,6 +267,7 @@ int ksu_handle_stat(int *dfd, struct filename **filename, int *flags) {
  
      pr_info("ksu_handle_stat: su->sh!\n");
-+	write_sulog('s');
      memcpy((void *)((*filename)->name), sh_path, sizeof(sh_path));
++	write_sulog('s');
      return 0;
  }
-@@ -281,6 +284,7 @@ int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags)
+ #else
+@@ -281,6 +283,7 @@ int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags)
  
      if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
          pr_info("ksu_handle_stat: su->sh!\n");
@@ -35,66 +36,10 @@ index 4e5db588..4489b1fb 100644
      }
  
 diff --git a/kernel/supercalls.c b/kernel/supercalls.c
-index aad03b92..8fde37ca 100644
+index f87f813e..98d9d9b5 100644
 --- a/kernel/supercalls.c
 +++ b/kernel/supercalls.c
-@@ -582,6 +582,55 @@ static int add_try_umount(void __user *arg)
-         return 0;
-     }
- 
-+	// this way userspace can deduce the memory it has to prepare.
-+	case KSU_UMOUNT_GETSIZE: {
-+		// check for pointer first
-+		if (!cmd.arg)
-+			return -EFAULT;
-+	
-+		size_t total_size = 0; // size of list in bytes
-+
-+		down_read(&mount_list_lock);
-+		list_for_each_entry(entry, &mount_list, list) {
-+			total_size = total_size + strlen(entry->umountable) + 1; // + 1 for \0
-+		}
-+		up_read(&mount_list_lock);
-+
-+		pr_info("cmd_add_try_umount: total_size: %zu\n", total_size);
-+		
-+		if (copy_to_user((size_t __user *)cmd.arg, &total_size, sizeof(total_size)))
-+			return -EFAULT;
-+
-+		return 0;
-+	}
-+	
-+	// WARNING! this is straight up pointerwalking.
-+	// this way we dont need to redefine the ioctl defs.
-+	// this also avoids us needing to kmalloc
-+	// userspace have to send pointer to memory (malloc/alloca) or pointer to a VLA.
-+	case KSU_UMOUNT_GETLIST: {
-+		if (!cmd.arg)
-+			return -EFAULT;
-+		
-+		void *user_buf = (void *)cmd.arg;
-+
-+		down_read(&mount_list_lock);
-+		list_for_each_entry(entry, &mount_list, list) {
-+			pr_info("cmd_add_try_umount: entry: %s\n", entry->umountable);
-+		
-+			if (copy_to_user(user_buf, entry->umountable, strlen(entry->umountable) + 1 )) {
-+				up_read(&mount_list_lock);
-+				return -EFAULT;
-+			}
-+			
-+			// walk it! +1 for null terminator
-+			user_buf = user_buf + strlen(entry->umountable) + 1;
-+		}
-+		up_read(&mount_list_lock);
-+
-+		return 0;
-+	}
-+
-     default: {
-         pr_err("cmd_add_try_umount: invalid operation %u\n", cmd.mode);
-         return -EINVAL;
-@@ -871,6 +920,37 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
+@@ -958,6 +958,37 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
              pr_warn("install fd add task_work failed\n");
          }
      }
@@ -132,28 +77,3 @@ index aad03b92..8fde37ca 100644
      return 0;
  }
  #endif // #ifndef CONFIG_KSU_SUSFS
-@@ -878,6 +958,8 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
- void ksu_supercalls_init(void)
- {
- 	int i;
-+	
-+	sulog_init_heap(); // grab heap memory
- 
-     pr_info("KernelSU IOCTL Commands:\n");
-     for (i = 0; ksu_ioctl_handlers[i].handler; i++) {
-diff --git a/kernel/supercalls.h b/kernel/supercalls.h
-index 2256242d..e58a086c 100644
---- a/kernel/supercalls.h
-+++ b/kernel/supercalls.h
-@@ -11,7 +11,10 @@
- 
- // Toolkit extensions
- #define CHANGE_MANAGER_UID 10006
--#define GET_SULOG_DUMP 10009
-+#define GET_SULOG_DUMP 10009        // get sulog dump, max, last 100 escalations
-+#define GET_SULOG_DUMP_V2 10010     // get sulog dump, max, last 250 escalations
-+#define KSU_UMOUNT_GETSIZE 107   // get list size // shit is u8 we cant fit 10k+ on it
-+#define KSU_UMOUNT_GETLIST 108   // get list
- 
- // Command structures for ioctl
- 

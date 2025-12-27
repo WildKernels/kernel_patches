@@ -2,7 +2,7 @@ diff --git a/kernel/supercalls.c b/kernel/supercalls.c
 index da39800..1229b02 100644
 --- a/kernel/supercalls.c
 +++ b/kernel/supercalls.c
-@@ -471,7 +496,7 @@ static int do_get_hook_mode(void __user *arg)
+@@ -460,7 +460,7 @@ static int do_get_hook_mode(void __user *arg)
  {
  	struct ksu_get_hook_mode_cmd cmd = {0};
  

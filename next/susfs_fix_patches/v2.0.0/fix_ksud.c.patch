@@ -2,20 +2,6 @@ diff --git a/kernel/ksud.c b/kernel/ksud.c
 index d671193d..d083246e 100644
 --- a/kernel/ksud.c
 +++ b/kernel/ksud.c
-@@ -46,10 +46,9 @@ static const char KERNEL_SU_RC[] =
- 	"    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " services\n"
- 	"\n"
- 
--    "on property:sys.boot_completed=1\n"
--    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH
--    " boot-completed\n"
--    "\n"
-+	"on property:sys.boot_completed=1\n"
-+	"    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " boot-completed\n"
-+	"\n"
- 
- 	"\n";
- 
 @@ -228,6 +227,14 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
  		return 0;
  	}
@@ -119,7 +105,7 @@ index d671193d..d083246e 100644
  	int ret;
  
  	ret = register_kprobe(&execve_kp);
-@@ -573,12 +610,15 @@ void ksu_ksud_init()
+@@ -604,12 +604,15 @@ void ksu_ksud_init()
  	INIT_WORK(&stop_vfs_read_work, do_stop_vfs_read_hook);
  	INIT_WORK(&stop_execve_hook_work, do_stop_execve_hook);
  	INIT_WORK(&stop_input_hook_work, do_stop_input_hook);
@@ -135,4 +121,61 @@ index d671193d..d083246e 100644
  	unregister_kprobe(&input_event_kp);
 +#endif // #ifndef CONFIG_KSU_SUSFS
  }
-\ No newline at end of file
+diff --git a/kernel/ksud.c b/kernel/ksud.c
+index d671193d..d083246e 100644
+--- a/kernel/ksud.c
++++ b/kernel/ksud.c
+@@ -17,6 +17,9 @@
+ #include <linux/namei.h>
+ #include <linux/workqueue.h>
+ #include <linux/uio.h>
++#include <linux/atomic.h>
++#include <linux/jiffies.h>
++#include <linux/delay.h>
+ 
+ #include "manager.h"
+ #include "allowlist.h"
+@@ -202,6 +205,43 @@ static void on_post_fs_data_cbfun(struct callback_head *cb)
+ static struct callback_head on_post_fs_data_cb = { .func =
+ 							on_post_fs_data_cbfun };
+ 
++// One-shot
++static atomic_t ksud_root_done = ATOMIC_INIT(0);
++
++// Delayed work
++static void ksud_dispatch_workfn(struct work_struct *work);
++static DECLARE_DELAYED_WORK(ksud_dispatch_work, ksud_dispatch_workfn);
++
++// Fallback dispatch
++static void ksud_dispatch_workfn(struct work_struct *work)
++{
++	// Check
++	if (atomic_read(&ksud_root_done))
++		return;
++
++	// Wait
++	if (!ksu_module_mounted || !ksu_boot_completed) {
++		schedule_delayed_work(&ksud_dispatch_work,
++					msecs_to_jiffies(1000));
++		return;
++	}
++
++	// Claim (one-shot); execute
++	if (atomic_cmpxchg(&ksud_root_done, 0, 1) != 0)
++		return;
++
++	pr_info("fallback dispatch (post-fs-data)\n");
++	on_post_fs_data();
++}
++
++static int __init ksud_dispatch_init(void)
++{
++	// Fallback scheduling (post late-init)
++	schedule_delayed_work(&ksud_dispatch_work, msecs_to_jiffies(500));
++	return 0;
++}
++late_initcall(ksud_dispatch_init);
++
+ #ifdef CONFIG_KSU_SUSFS
+ extern int ksu_handle_execveat_init(struct filename *filename);
+ #endif // #ifdef CONFIG_KSU_SUSFS
