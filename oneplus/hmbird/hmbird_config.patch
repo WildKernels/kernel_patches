@@ -1,0 +1,11 @@
+diff --git a/drivers/of/overwriter/overwrite_configs/common/hmbird.conf b/drivers/of/overwriter/overwrite_configs/common/hmbird.conf
+new file mode 100644
+index 0000000000000..68278d7f591f9
+--- /dev/null
++++ b/drivers/of/overwriter/overwrite_configs/common/hmbird.conf
+@@ -0,0 +1,5 @@
++r /soc/oplus,xxbird
++c /soc/oplus,hmbird
++c /soc/oplus,hmbird/version_type
++d /soc/oplus,hmbird/version_type/type
++a /soc/oplus,hmbird/version_type/type HMBIRD_OGKI
