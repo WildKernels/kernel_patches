@@ -1,5 +1,5 @@
 diff --git a/drivers/of/Makefile b/drivers/of/Makefile
-index df305348d1cb8..0e98bb6505007 100644
+index df305348d1cb8..867fce9f2952d 100644
 --- a/drivers/of/Makefile
 +++ b/drivers/of/Makefile
 @@ -20,3 +20,4 @@ endif
@@ -7,19 +7,20 @@ index df305348d1cb8..0e98bb6505007 100644
  
  obj-$(CONFIG_OF_UNITTEST) += unittest-data/
 +obj-y += overwriter/
-\ No newline at end of file
 diff --git a/drivers/of/overwriter/Makefile b/drivers/of/overwriter/Makefile
 new file mode 100644
-index 0000000000000..234dac8580d3e
+index 0000000000000..6cb7c0a8bbc01
 --- /dev/null
 +++ b/drivers/of/overwriter/Makefile
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,15 @@
 +obj-y += overwrite_configs.o overwrite_config_loader.o
 +
 +extra-y += overwrite_configs.c
 +
-+quiet_cmd_gencfg = GENCFG $@
-+      cmd_gencfg = $(srctree)/drivers/of/overwriter/overwrite_configs/convert_configs.sh
++SOURCE_PATH = "$(srctree)/$(src)"
++
++quiet_cmd_gencfg = GEN $@
++      cmd_gencfg = $(srctree)/drivers/of/overwriter/overwrite_configs/convert_configs.sh $@ $(SOURCE_PATH)
 +
 +PHONY += FORCE
 +FORCE:
@@ -27,7 +28,6 @@ index 0000000000000..234dac8580d3e
 +$(obj)/overwrite_configs.c: FORCE
 +	$(Q)mkdir -p $(dir $@)
 +	$(call if_changed,gencfg)
-\ No newline at end of file
 diff --git a/drivers/of/overwriter/overwrite_config_loader.c b/drivers/of/overwriter/overwrite_config_loader.c
 new file mode 100644
 index 0000000000000..70e29e6cdd5af
@@ -1024,7 +1024,7 @@ index 0000000000000..70e29e6cdd5af
 +early_initcall(overwrite_config_init);
 diff --git a/drivers/of/overwriter/overwrite_configs.h b/drivers/of/overwriter/overwrite_configs.h
 new file mode 100644
-index 0000000000000..2086e31b2d920
+index 0000000000000..7adb94c0c412a
 --- /dev/null
 +++ b/drivers/of/overwriter/overwrite_configs.h
 @@ -0,0 +1,13 @@
@@ -1041,20 +1041,30 @@ index 0000000000000..2086e31b2d920
 +extern const int overwrite_config_group_count;
 +
 +#endif /* _OVERWRITE_CONFIGS_H */
-\ No newline at end of file
 diff --git a/drivers/of/overwriter/overwrite_configs/convert_configs.sh b/drivers/of/overwriter/overwrite_configs/convert_configs.sh
 new file mode 100644
-index 0000000000000..873cd370d1196
+index 0000000000000..b05dabb860650
 --- /dev/null
 +++ b/drivers/of/overwriter/overwrite_configs/convert_configs.sh
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,116 @@
 +#!/bin/bash
-+srctree=$(pwd)
++out_file="$1"
++srctree="$2"
++
++srctree=$(echo "$srctree" | sed 's|//|/|g')
++
++if [[ "$srctree" == ..* ]]; then
++    srctree="$srctree"
++else
++    srctree=$(echo "$srctree" | sed 's|\(.*\)\1|\1|')
++fi
++
++srctree=$(echo "$srctree" | sed 's|/overwrite_configs$||; s|$|/overwrite_configs|')
 +
 +# 创建目标文件并写入头部
-+> "$srctree/drivers/of/overwriter/overwrite_configs.c"
++> "$out_file"
 +
-+cat << EOF > "$srctree/drivers/of/overwriter/overwrite_configs.c"
++cat << EOF > "$out_file"
 +#include "overwrite_configs.h" // 包含头文件，获取 struct overwrite_config_group 的定义
 +#include <linux/stddef.h>
 +
@@ -1081,7 +1091,7 @@ index 0000000000000..873cd370d1196
 +}
 +
 +# 处理 common 文件夹中的配置文件
-+common_dir="$srctree/../drivers/of/overwriter/overwrite_configs/common"
++common_dir="$srctree/common"
 +if [ -d "$common_dir" ]; then
 +    for file in "$common_dir"/*.conf; do
 +        if [ -f "$file" ]; then
@@ -1107,19 +1117,19 @@ index 0000000000000..873cd370d1196
 +    fi
 +
 +    # 为每个前缀生成一个独立的字符串数组
-+    echo "static const char *const ${c_var_name}_values[] = {" >> "$srctree/drivers/of/overwriter/overwrite_configs.c"
++    echo "static const char *const ${c_var_name}_values[] = {" >> "$out_file"
 +    # 移除最后一个逗号（如果有的话）
 +    if [ -n "$values_str" ]; then
-+        echo "    ${values_str%,}" >> "$srctree/drivers/of/overwriter/overwrite_configs.c"
++        echo "    ${values_str%,}" >> "$out_file"
 +    fi
-+    echo "};" >> "$srctree/drivers/of/overwriter/overwrite_configs.c"
-+    echo "" >> "$srctree/drivers/of/overwriter/overwrite_configs.c"
++    echo "};" >> "$out_file"
++    echo "" >> "$out_file"
 +done
 +
 +group_count=0
 +
 +# --- 生成 overwrite_config_groups 数组 ---
-+cat << EOF >> "$srctree/drivers/of/overwriter/overwrite_configs.c"
++cat << EOF >> "$out_file"
 +// 所有配置组的全局数组
 +const struct overwrite_config_group overwrite_config_groups[] = {
 +EOF
@@ -1134,12 +1144,12 @@ index 0000000000000..873cd370d1196
 +    fi
 +
 +    # 将该前缀的组添加到主数组中
-+    echo "    { .prefix = \"$prefix\", .values = ${c_var_name}_values, .count = $values_count }," >> "$srctree/drivers/of/overwriter/overwrite_configs.c"
++    echo "    { .prefix = \"$prefix\", .values = ${c_var_name}_values, .count = $values_count }," >> "$out_file"
 +    ((group_count++))
 +done
 +
 +# 写入尾部
-+cat << EOF >> "$srctree/drivers/of/overwriter/overwrite_configs.c"
++cat << EOF >> "$out_file"
 +};
 +
 +const int overwrite_config_group_count = $group_count;
@@ -1147,10 +1157,9 @@ index 0000000000000..873cd370d1196
 +
 +# 确保输出文件的换行符为 Linux 格式（LF）
 +if command -v dos2unix >/dev/null 2>&1; then
-+    dos2unix "$srctree/drivers/of/overwriter/overwrite_configs.c" 2>/dev/null
++    dos2unix "$out_file" 2>/dev/null
 +else
 +    # 如果没有 dos2unix 工具，使用 tr 移除 \r
-+    tr -d '\r' < "$srctree/drivers/of/overwriter/overwrite_configs.c" > "$srctree/drivers/of/overwriter/overwrite_configs.tmp"
-+    mv "$srctree/drivers/of/overwriter/overwrite_configs.tmp" "$srctree/drivers/of/overwriter/overwrite_configs.c"
++    tr -d '\r' < "$out_file" > "$srctree/overwrite_configs.tmp"
++    mv "$srctree/overwrite_configs.tmp" "$out_file"
 +fi
-\ No newline at end of file
