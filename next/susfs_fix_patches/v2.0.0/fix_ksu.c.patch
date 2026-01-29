@@ -1,0 +1,42 @@
+diff --git a/kernel/ksu.c b/kernel/ksu.c
+index c1aa6f20..bf03c0bf 100644
+--- a/kernel/ksu.c
++++ b/kernel/ksu.c
+@@ -45,14 +45,24 @@ int __init kernelsu_init(void)
+ 
+ 	ksu_supercalls_init();
+ 
++#ifndef CONFIG_KSU_SUSFS
+ 	ksu_syscall_hook_manager_init();
++#else
++    ksu_setuid_hook_init();
++    ksu_sucompat_init();
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 
+ 	ksu_allowlist_init();
+ 
+ 	ksu_throne_tracker_init();
+ 
+-	ksu_ksud_init();
++#ifdef CONFIG_KSU_SUSFS
++    susfs_init();
++#endif // #ifdef CONFIG_KSU_SUSFS
+ 
++#ifndef CONFIG_KSU_SUSFS
++	ksu_ksud_init();
++#endif // #ifndef CONFIG_KSU_SUSFS
+     ksu_file_wrapper_init();
+ 
+ #ifdef MODULE
+@@ -72,9 +82,11 @@ void kernelsu_exit(void)
+ 
+ 	ksu_observer_exit();
+ 
++#ifndef CONFIG_KSU_SUSFS
+ 	ksu_ksud_exit();
+ 
+ 	ksu_syscall_hook_manager_exit();
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 
+ 	ksu_supercalls_exit();
+ 

@@ -1,0 +1,32 @@
+diff --git a/kernel/Kbuild b/kernel/Kbuild
+index 39c77265..372ec6f6 100644
+--- a/kernel/Kbuild
++++ b/kernel/Kbuild
+@@ -22,6 +22,7 @@ kernelsu-objs += selinux/sepolicy.o
+ kernelsu-objs += selinux/rules.o
+ ccflags-y += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include
+ ccflags-y += -I$(objtree)/security/selinux -include $(srctree)/include/uapi/asm-generic/errno.h
++ccflags-y += -I$(srctree)/security/baseband-guard/ -I$(srctree)/security/baseband-guard/tracing
+ 
+ obj-$(CONFIG_KSU) += kernelsu.o
+ 
+diff --git a/kernel/app_profile.c b/kernel/app_profile.c
+index a24006ea..4d7b0757 100644
+--- a/kernel/app_profile.c
++++ b/kernel/app_profile.c
+@@ -1,5 +1,6 @@
+ #include <linux/capability.h>
+ #include <linux/cred.h>
++#include <tracing/tracing.h>
+ #include <linux/sched.h>
+ #include <linux/sched/signal.h>
+ #include <linux/seccomp.h>
+@@ -152,6 +153,8 @@ void escape_with_root_profile(void)
+ 
+     setup_groups(profile, cred);
+ 
++    bbg_cred(cred)->is_untrusted_process = 1;
++
+     commit_creds(cred);
+ 
+     disable_seccomp();

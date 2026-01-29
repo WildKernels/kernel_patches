@@ -1,0 +1,38 @@
+From 1beff701410d67db2a941319a85c192b50606611 Mon Sep 17 00:00:00 2001
+From: Panchajanya1999 <panchajanya@azure-dev.live>
+Date: Thu, 12 Aug 2021 21:46:52 +0530
+Subject: [PATCH] ipv4/tcp: Force applications to use `TCP_NODELAY` to improve
+ network latency
+
+`TCP_NODELAY` will disable Nagle's algorithm, which basically collects
+small outgoing packets to send all at once.
+Thus `TCP_NODELAY` will send the data whenever it is available without
+waiting for any period to collect packets.
+
+It will basically optimize network video games and applications
+using chatty protocols (source: ExtraHop[1], RedHat[2])
+
+[1]: https://www.extrahop.com/company/blog/2016/tcp-nodelay-nagle-quickack-best-practices/#:~:text=The%20TCP_NODELAY%20socket%20option%20allows,buffer%2C%20whatever%20the%20packet%20size.
+[2]: https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux_for_real_time/7/html/tuning_guide/tcp_nodelay_and_small_buffer_writes
+
+Change-Id: Ief9f3a5e89c9b8ab0c0f8d1f144dda953e594a1c
+Signed-off-by: Panchajanya1999 <panchajanya@azure-dev.live>
+Signed-off-by: ImSpiDy <SpiDy2713@gmail.com>
+---
+ net/ipv4/tcp.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/net/ipv4/tcp.c b/net/ipv4/tcp.c
+index 5c22a840d6b33..8792751e07bd8 100644
+--- a/net/ipv4/tcp.c
++++ b/net/ipv4/tcp.c
+@@ -3549,6 +3549,9 @@ int do_tcp_setsockopt(struct sock *sk, int level, int optname,
+ 
+ 	sockopt_lock_sock(sk);
+ 
++	/* Hack optname to use TCP_NODELAY for everything */
++	optname=TCP_NODELAY;
++
+ 	switch (optname) {
+ 	case TCP_MAXSEG:
+ 		/* Values greater than interface MTU won't take effect. However

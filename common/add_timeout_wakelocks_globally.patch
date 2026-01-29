@@ -1,0 +1,35 @@
+From 866033f05377a3636f3769553d1e52ea6f96d52e Mon Sep 17 00:00:00 2001
+From: Panchajanya1999 <panchajanya@azure-dev.live>
+Date: Sun, 11 Jul 2021 21:17:16 +0530
+Subject: [PATCH] power/wakelock: Add a timeout to wakelocks globally
+
+Few wakelocks tends to get stuck for no reason. Blocking them
+isn't necessary and sometimes blocking them breaks basic
+functionality.
+Wakelocks like "tx_swr_ctrl" tends to get stuck if we keep earphones
+connected and drops battery massively.
+
+Test: Keep earphones plugged in and leave device for few hours
+Expected result: No "tx_swr_ctrl" is being stuck.
+Actual result: Patch is working as expected.
+
+Change-Id: I5296990a84ab44cf6e449d6535b8b99408c415c8
+Signed-off-by: Panchajanya1999 <panchajanya@azure-dev.live>
+Signed-off-by: Forenche <prahul2003@gmail.com>
+---
+ kernel/power/wakelock.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel/power/wakelock.c b/kernel/power/wakelock.c
+index 4e941999a53ba..e4aaf66812481 100644
+--- a/kernel/power/wakelock.c
++++ b/kernel/power/wakelock.c
+@@ -241,7 +241,7 @@ int pm_wake_lock(const char *buf)
+ 		do_div(timeout_ms, NSEC_PER_MSEC);
+ 		__pm_wakeup_event(wl->ws, timeout_ms);
+ 	} else {
+-		__pm_stay_awake(wl->ws);
++		__pm_wakeup_event(wl->ws, 500);
+ 	}
+ 
+ 	wakelocks_lru_most_recent(wl);

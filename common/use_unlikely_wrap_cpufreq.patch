@@ -1,0 +1,23 @@
+From 36651862e74a64dd6e09ac8fa6200c48ef5ee013 Mon Sep 17 00:00:00 2001
+From: ztc1997 <dev@ztc1997.com>
+Date: Mon, 13 May 2024 22:20:37 +0800
+Subject: [PATCH] cpufreq: use unlikely to wrap
+ `cpumask_empty(cpumask_min_limit_store[i].key)`
+
+---
+ drivers/cpufreq/cpufreq.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/cpufreq/cpufreq.c b/drivers/cpufreq/cpufreq.c
+index f54c142ed607f..829870fc84c2c 100644
+--- a/drivers/cpufreq/cpufreq.c
++++ b/drivers/cpufreq/cpufreq.c
+@@ -48,7 +48,7 @@ static struct cpumask_uint_kv cpumask_min_limit_store[MAX_CLUSTERS] __read_mostl
+ static void store_cpumask_min_limit(const cpumask_var_t key, const unsigned int value) {
+ 	int i;
+ 	for (i = 0; i < MAX_CLUSTERS; i++) {
+-		if (cpumask_empty(cpumask_min_limit_store[i].key) || cpumask_equal(cpumask_min_limit_store[i].key, key)) {
++		if (cpumask_equal(cpumask_min_limit_store[i].key, key) || unlikely(cpumask_empty(cpumask_min_limit_store[i].key))) {
+ 			cpumask_copy(cpumask_min_limit_store[i].key, key);
+ 			cpumask_min_limit_store[i].value = value;
+ 			return;

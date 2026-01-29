@@ -1,0 +1,12 @@
+--- a/fs/proc/task_mmu.c
++++ b/fs/proc/task_mmu.c
+@@ -1763,6 +1763,9 @@
+ 	unsigned long start_vaddr;
+ 	unsigned long end_vaddr;
+ 	int ret = 0, copied = 0;
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++	struct vm_area_struct *vma;
++#endif
+ 
+ 	if (!mm || !mmget_not_zero(mm))
+ 		goto out;

@@ -1,0 +1,33 @@
+From 4612e45ba92cbfcaba1e34dc9e744a0f728dfea8 Mon Sep 17 00:00:00 2001
+From: Jesse Chan <jc@linux.com>
+Date: Sun, 12 Apr 2020 09:35:14 +0000
+Subject: [PATCH] f2fs: Enlarge min_fsync_blocks to 20
+
+In OPPO's kernel:
+enlarge min_fsync_blocks to optimize performance
+  - yanwu@TECH.Storage.FS.oF2FS, 2019/08/12
+
+Huawei is also doing this in their production kernel.
+
+If this optimization is good for them and shipped
+with their devices, it should be good for us.
+
+Signed-off-by: Jesse Chan <jc@linux.com>
+Signed-off-by: Adithya R <gh0strider.2k18.reborn@gmail.com>
+---
+ fs/f2fs/segment.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/fs/f2fs/segment.h b/fs/f2fs/segment.h
+index 07dcbcbeb7c6d..d7576e8246602 100644
+--- a/fs/f2fs/segment.h
++++ b/fs/f2fs/segment.h
+@@ -777,7 +777,7 @@ static inline int utilization(struct f2fs_sb_info *sbi)
+  * F2FS_IPU_DISABLE - disable IPU. (=default option in LFS mode)
+  */
+ #define DEF_MIN_IPU_UTIL	70
+-#define DEF_MIN_FSYNC_BLOCKS	8
++#define DEF_MIN_FSYNC_BLOCKS	20
+ #define DEF_MIN_HOT_BLOCKS	16
+ 
+ #define SMALL_VOLUME_SEGMENTS	(16 * 512)	/* 16GB */

@@ -1,0 +1,46 @@
+From 0be8fb41e30ad7153a780aea502ebf986b3c12f1 Mon Sep 17 00:00:00 2001
+From: Sultan Alsawaf <sultan@kerneltoast.com>
+Date: Tue, 3 May 2022 23:21:44 -0700
+Subject: [PATCH] PM / freezer: Reduce freeze timeout to 1 second for Android
+
+Freezing processes on Android usually takes less than 100 ms, and if it
+takes longer than that to the point where the 20 second freeze timeout is
+reached, it's because the remaining processes to be frozen are deadlocked
+waiting for something from a process which is already frozen. There's no
+point in burning power trying to freeze for that long, so reduce the freeze
+timeout to a very generous 1 second for Android and don't let anything mess
+with it.
+
+Signed-off-by: Sultan Alsawaf <sultan@kerneltoast.com>
+---
+ kernel/power/main.c    | 3 +++
+ kernel/power/process.c | 2 +-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/kernel/power/main.c b/kernel/power/main.c
+index a3543bd2d25af..f691f144fe2bd 100644
+--- a/kernel/power/main.c
++++ b/kernel/power/main.c
+@@ -922,6 +922,9 @@ static ssize_t pm_freeze_timeout_store(struct kobject *kobj,
+ {
+ 	unsigned long val;
+ 
++	/* Don't let anything in Android change the freeze timeout */
++	return n;
++
+ 	if (kstrtoul(buf, 10, &val))
+ 		return -EINVAL;
+ 
+diff --git a/kernel/power/process.c b/kernel/power/process.c
+index a22a91b7e3d92..8eda64d0cc36e 100644
+--- a/kernel/power/process.c
++++ b/kernel/power/process.c
+@@ -25,7 +25,7 @@
+ /*
+  * Timeout for stopping processes
+  */
+-unsigned int __read_mostly freeze_timeout_msecs = 20 * MSEC_PER_SEC;
++unsigned int __read_mostly freeze_timeout_msecs = MSEC_PER_SEC;
+ 
+ static int try_to_freeze_tasks(bool user_only)
+ {

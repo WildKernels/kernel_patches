@@ -1,0 +1,121 @@
+diff --git a/kernel/ksud.c b/kernel/ksud.c
+index 253f361e..2ffc09ff 100644
+--- a/kernel/ksud.c
++++ b/kernel/ksud.c
+@@ -119,7 +119,9 @@ void on_boot_completed(void)
+     ksu_boot_completed = true;
+     pr_info("on_boot_completed!\n");
+     track_throne(true);
++#ifndef CONFIG_KSU_SUSFS
+     ksu_avc_spoof_late_init();
++#endif // #ifndef CONFIG_KSU_SUSFS
+ }
+ 
+ #ifndef CONFIG_KSU_SUSFS
+@@ -285,6 +287,11 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+ 		}
+ 	}
+ 
++#ifdef CONFIG_KSU_SUSFS
++    // - We need to run ksu_handle_execveat_init() at the very end in case the above checks are skipped
++    (void)ksu_handle_execveat_init(filename);
++#endif // #ifdef CONFIG_KSU_SUSFS
++
+ 	return 0;
+ }
+ 
+@@ -454,6 +461,12 @@ static bool is_volumedown_enough(unsigned int count)
+ int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code,
+ 					int *value)
+ {
++#ifdef CONFIG_KSU_SUSFS
++    if (!ksu_input_hook) {
++        return 0;
++    }
++#endif // #ifdef CONFIG_KSU_SUSFS
++
+ 	if (*type == EV_KEY && *code == KEY_VOLUMEDOWN) {
+ 		int val = *value;
+ 		pr_info("KEY_VOLUMEDOWN val: %d\n", val);
+@@ -626,17 +639,45 @@ static void do_stop_input_hook(struct work_struct *work)
+ {
+ 	unregister_kprobe(&input_event_kp);
+ }
++#endif // #ifndef CONFIG_KSU_SUSFS
++
++#ifdef CONFIG_KSU_SUSFS
++void ksu_handle_vfs_fstat(int fd, loff_t *kstat_size_ptr) {
++    loff_t new_size = *kstat_size_ptr + ksu_rc_len;
++    struct file *file = fget(fd);
++
++    if (!file)
++        return;
++
++    if (is_init_rc(file)) {
++        pr_info("stat init.rc");
++        pr_info("adding ksu_rc_len: %lld -> %lld", *kstat_size_ptr, new_size);
++        *kstat_size_ptr = new_size;
++    }
++    fput(file);
++}
++#endif // #ifdef CONFIG_KSU_SUSFS
+ 
+ static void stop_init_rc_hook()
+ {
++#ifndef CONFIG_KSU_SUSFS
+ 	bool ret = schedule_work(&stop_init_rc_hook_work);
+ 	pr_info("unregister init_rc_hook kprobe: %d!\n", ret);
++#else
++    ksu_init_rc_hook = false;
++    pr_info("stop init_rc_hook\n");
++#endif // #ifndef CONFIG_KSU_SUSFS
+ }
+ 
+ static void stop_execve_hook()
+ {
++#ifndef CONFIG_KSU_SUSFS
+ 	bool ret = schedule_work(&stop_execve_hook_work);
+ 	pr_info("unregister execve kprobe: %d!\n", ret);
++#else
++    ksu_execveat_hook = false;
++    pr_info("stop execve_hook\n");
++#endif // #ifndef CONFIG_KSU_SUSFS
+ }
+ 
+ static void stop_input_hook()
+@@ -646,13 +687,19 @@ static void stop_input_hook()
+ 		return;
+ 	}
+ 	input_hook_stopped = true;
++#ifndef CONFIG_KSU_SUSFS
+ 	bool ret = schedule_work(&stop_input_hook_work);
+ 	pr_info("unregister input kprobe: %d!\n", ret);
++#else
++    ksu_input_hook = false;
++    pr_info("stop input_hook\n");
++#endif // #ifndef CONFIG_KSU_SUSFS
+ }
+ 
+ // ksud: module support
+ void ksu_ksud_init()
+ {
++#ifndef CONFIG_KSU_SUSFS
+ 	int ret;
+ 
+ 	ret = register_kprobe(&execve_kp);
+@@ -670,12 +717,15 @@ void ksu_ksud_init()
+ 	INIT_WORK(&stop_init_rc_hook_work, do_stop_init_rc_hook);
+ 	INIT_WORK(&stop_execve_hook_work, do_stop_execve_hook);
+ 	INIT_WORK(&stop_input_hook_work, do_stop_input_hook);
++#endif // #ifndef CONFIG_KSU_SUSFS
+ }
+ 
+ void ksu_ksud_exit()
+ {
++#ifndef CONFIG_KSU_SUSFS
+ 	unregister_kprobe(&execve_kp);
+ 	// this should be done before unregister sys_read_kp
+ 	// unregister_kprobe(&sys_read_kp);
+ 	unregister_kprobe(&input_event_kp);
++#endif // #ifndef CONFIG_KSU_SUSFS
+ }

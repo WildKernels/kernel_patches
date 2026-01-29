@@ -1,0 +1,12 @@
+--- a/fs/open.c	2026-01-01 06:55:12.000000000 -0500
++++ b/fs/open.c	2026-01-01 02:28:57.860031999 -0500
+@@ -32,6 +32,9 @@
+ #include <linux/ima.h>
+ #include <linux/dnotify.h>
+ #include <linux/compat.h>
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs_def.h>
++#endif
+ 
+ #include "internal.h"
+ #include <trace/hooks/syscall_check.h>

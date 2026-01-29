@@ -1,0 +1,12 @@
+--- a/fs/proc/base.c	2026-01-02 06:19:41.471558598 -0500
++++ b/fs/proc/base.c	2026-01-02 06:20:43.939029454 -0500
+@@ -101,6 +101,9 @@
+ #include <linux/ksm.h>
+ #include <linux/cpufreq_times.h>
+ #include <linux/dma-buf.h>
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++#include <linux/susfs_def.h>
++#endif
+ #include <trace/events/oom.h>
+ #include <trace/hooks/sched.h>
+ #include "internal.h"

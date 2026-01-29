@@ -1,0 +1,76 @@
+From 844839c9e1ff3fecf869308fcdc6b4cb32ab9196 Mon Sep 17 00:00:00 2001
+From: FlyFrog <ramgear@gmail.com>
+Date: Sun, 16 May 2021 22:59:57 +0530
+Subject: [PATCH] int_sqrt: Improve 3x faster integer sqrt.
+
+Result on 10,000,000 call.
+Old:
+sqrt(12345689) = 3513
+real	0m0.768s
+user	0m0.760s
+sys	0m0.004s
+
+New:
+sqrt(12345689) = 3513
+real	0m0.222s
+user	0m0.224s
+sys	0m0.000s
+
+Signed-off-by: Vaisakh Murali <mvaisakh@statixos.com>
+Signed-off-by: SparXFusion <s2234nadar@gmail.com>
+Change-Id: Id63e22132df2576389ca1589ea69a7cc90696abd
+---
+ lib/math/int_sqrt.c | 32 ++++++++++++++++++++------------
+ 1 file changed, 20 insertions(+), 12 deletions(-)
+
+diff --git a/lib/math/int_sqrt.c b/lib/math/int_sqrt.c
+index a8170bb9142f3..cead8de06c38b 100644
+--- a/lib/math/int_sqrt.c
++++ b/lib/math/int_sqrt.c
+@@ -17,26 +17,34 @@
+  *
+  * Computes: floor(sqrt(x))
+  */
+-unsigned long int_sqrt(unsigned long x)
++inline unsigned long int_sqrt(unsigned long x)
+ {
+-	unsigned long b, m, y = 0;
++	register unsigned long tmp;
++	register unsigned long place;
++	register unsigned long root = 0;
+ 
+ 	if (x <= 1)
+ 		return x;
+ 
+-	m = 1UL << (__fls(x) & ~1UL);
+-	while (m != 0) {
+-		b = y + m;
+-		y >>= 1;
++	place = 1UL << (BITS_PER_LONG - 2);
+ 
+-		if (x >= b) {
+-			x -= b;
+-			y += m;
++	do{
++		place >>= 2;
++	}while(place > x);
++
++	do {
++		tmp = root + place;
++		root >>= 1;
++
++		if (x >= tmp)
++		{
++			x -= tmp;
++			root += place;
+ 		}
+-		m >>= 2;
+-	}
++		place >>= 2;
++	}while (place != 0);
+ 
+-	return y;
++	return root;
+ }
+ EXPORT_SYMBOL(int_sqrt);
+ 
