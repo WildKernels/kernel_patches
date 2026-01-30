@@ -1,13 +1,15 @@
 --- a/fs/namespace.c
 +++ b/fs/namespace.c
-@@ -37,10 +37,23 @@
+@@ -33,13 +33,27 @@
+ #include <linux/fslog.h>
  #ifdef CONFIG_KDP_NS
  #include <linux/kdp.h>
  #endif
+ 
 +#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 +#include <linux/susfs_def.h>
 +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
- 
++
  #include "pnode.h"
  #include "internal.h"
  
@@ -24,7 +26,11 @@
  /* Maximum number of mounts in a mount namespace */
  unsigned int sysctl_mount_max __read_mostly = 100000;
  
-@@ -4068,6 +4081,9 @@
+ /* @fs.sec -- c4d165e8cb5ea1cc14cdedb9eab23efd642d4d5f -- */
+ static unsigned int sys_umount_trace_status;
+@@ -3917,10 +3931,13 @@
+ 	namespace_lock();
+ 	/* First pass: copy the tree topology */
  	copy_flags = CL_COPY_UNBINDABLE | CL_EXPIRE;
  	if (user_ns != ns->user_ns)
  		copy_flags |= CL_SHARED_TO_SLAVE;
@@ -34,3 +40,5 @@
  #ifdef CONFIG_KDP_NS
  	new = copy_tree(old, ((struct kdp_mount *)old)->mnt->mnt_root, copy_flags);
  #else
+ 	new = copy_tree(old, old->mnt.mnt_root, copy_flags);
+ #endif
