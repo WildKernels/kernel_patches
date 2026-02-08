@@ -1,0 +1,12 @@
+--- execorig.c	2026-01-29 22:38:13.232463500 -0800
++++ exec.c	2026-01-29 22:42:24.944148783 -0800
+@@ -66,6 +66,9 @@
+ #include <linux/io_uring.h>
+ #include <linux/syscall_user_dispatch.h>
+ #include <linux/task_integrity.h>
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs_def.h>
++#endif
+ 
+ #include <linux/uaccess.h>
+ #include <asm/mmu_context.h>
