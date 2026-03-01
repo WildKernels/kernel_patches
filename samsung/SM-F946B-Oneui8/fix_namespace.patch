@@ -1,6 +1,6 @@
 --- a/fs/namespace.c
 +++ b/fs/namespace.c
-@@ -36,10 +36,22 @@
+@@ -36,10 +36,21 @@
  #ifdef CONFIG_KDP_NS
  #include <linux/kdp.h>
  #endif
@@ -13,9 +13,8 @@
  
 +#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 +extern bool susfs_is_current_ksu_domain(void);
++extern bool susfs_is_current_zygote_domain(void);
 +extern bool susfs_is_sdcard_android_data_decrypted __read_mostly;
-+
-+static atomic64_t susfs_ksu_mounts = ATOMIC64_INIT(0);
 +
 +#define CL_COPY_MNT_NS BIT(25) /* used by copy_mnt_ns() */
 +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
@@ -23,13 +22,13 @@
  /* Maximum number of mounts in a mount namespace */
  unsigned int sysctl_mount_max __read_mostly = 100000;
  
-@@ -4049,6 +4061,9 @@
+@@ -4047,6 +4058,9 @@
  	copy_flags = CL_COPY_UNBINDABLE | CL_EXPIRE;
  	if (user_ns != ns->user_ns)
  		copy_flags |= CL_SHARED_TO_SLAVE;
 +#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 +	copy_flags |= CL_COPY_MNT_NS;
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
  #ifdef CONFIG_KDP_NS
  	new = copy_tree(old, ((struct kdp_mount *)old)->mnt->mnt_root, copy_flags);
  #else
