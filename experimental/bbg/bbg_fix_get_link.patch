@@ -31,7 +31,7 @@ index 9668050..32a4416 100644
 -        	}
 -        	path_put(&target_path);
 +        DEFINE_DELAYED_CALL(done);
-+        const char* symlink_target_link = inode->i_op->get_link(dentry, inode, &done);
++        const char* symlink_target_link = vfs_get_link(dentry, &done);
 +        int result = 0;
 +        struct path target_path;
 +
