@@ -1,5 +1,5 @@
 diff --git a/kernel/sucompat.c b/kernel/sucompat.c
-index 97493b1e..e2079313 100644
+index 7b6de590..13480259 100644
 --- a/kernel/sucompat.c
 +++ b/kernel/sucompat.c
 @@ -230,6 +230,7 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
@@ -35,14 +35,13 @@ index 97493b1e..e2079313 100644
      }
  
 diff --git a/kernel/supercalls.c b/kernel/supercalls.c
-index 5d78b861..ab494f51 100644
+index 4a03af4e..2ae01635 100644
 --- a/kernel/supercalls.c
 +++ b/kernel/supercalls.c
-@@ -1118,6 +1118,55 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
-             pr_warn("install fd add task_work failed\n");
-         }
+@@ -1120,6 +1120,54 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
+ 	return 0;
      }
-+
+ 
 +	unsigned long reply = (unsigned long)*arg;
 +
 +	if (magic2 == CHANGE_MANAGER_UID) {
@@ -91,6 +90,6 @@ index 5d78b861..ab494f51 100644
 +			return 0;
 +	}
 +
-     return 0;
+     return -EINVAL;
  }
  #endif // #ifndef CONFIG_KSU_SUSFS
