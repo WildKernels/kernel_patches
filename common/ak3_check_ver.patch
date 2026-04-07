@@ -1,0 +1,154 @@
+From a522f7f898893f85eb7705106c0e71dbc85d2ef2 Mon Sep 17 00:00:00 2001
+From: luigimak <luigimak@hotmail.it>
+Date: Tue, 7 Apr 2026 15:11:22 +0200
+Subject: [PATCH] feat(anykernel): add kernel version compatibility check
+ before flash
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Extract kernel version (X.X.X-androidYY only) from Image via strings,
+  with fallback to magiskboot decompress for compressed kernels
+- Use grep -E "Linux version [0-9]" to exclude format strings like "%s"
+- Extract kernel version from split_img/kernel (target slot, post split_boot)
+- Check 1: android branch must match exactly (any mismatch → abort)
+- Check 2: kernel version Image must be >= Device (Image < Device → abort)
+- Add do.force_flash property in anykernel.sh to bypass check (0=off, 1=on)
+- Check runs after split_boot, before flash_boot/write_boot
+
+Output examples:
+  -> Image  : 5.10.236-android12
+  -> Device : 5.10.236-android12
+  -> Kernel version: COMPATIBLE (5.10.236-android12 >= 5.10.236-android12)
+
+  -> MISMATCH Kernel version: Image=5.10.235 < Device=5.10.236. Abort.
+  -> MISMATCH Android branch: Image=android12 | Device=android15. Abort.
+
+Bypass usage:
+  set do.force_flash=1 in anykernel.sh properties
+---
+ anykernel.sh | 95 +++++++++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 94 insertions(+), 1 deletion(-)
+
+diff --git a/anykernel.sh b/anykernel.sh
+index 400c20b791a0..1c7aa90d766c 100755
+--- a/anykernel.sh
++++ b/anykernel.sh
+@@ -10,6 +10,7 @@ do.modules=0
+ do.systemless=0
+ do.cleanup=1
+ do.cleanuponabort=0
++do.force_flash=0
+ device.name1=
+ device.name2=
+ device.name3=
+@@ -32,6 +33,7 @@ no_magisk_check=1
+ # import functions/variables and setup patching - see for reference (DO NOT REMOVE)
+ . tools/ak3-core.sh
+ 
++# GKI check
+ kernel_version=$(cat /proc/version | awk -F '-' '{print $1}' | awk '{print $3}')
+ case $kernel_version in
+     5.1*) ksu_supported=true ;;
+@@ -43,9 +45,100 @@ esac
+ ui_print " " "  -> Wild Kernels Supported: $ksu_supported"
+ $ksu_supported || abort "  -> Non-GKI device, abort."
+ 
++# Kernel version extraction function from kernel files (raw or compressed)
++# Returns only X.X.X-androidYY, discards everything else
++extract_kernel_version() {
++  local target="$1"
++  local ver_str tmpfile
++
++  # Attempt 1: raw (direct strings) - grep [0-9] excludes format strings like "Linux version %s"
++  ver_str=$(strings "$target" 2>/dev/null | grep -E "Linux version [0-9]" | head -1)
++
++  # Attempt 2: compressed kernel → magiskboot decompress then strings
++  if [ -z "$ver_str" ]; then
++    tmpfile="${target}_ak3decomp"
++    magiskboot decompress "$target" "$tmpfile" 2>/dev/null
++    if [ -f "$tmpfile" ]; then
++      ver_str=$(strings "$tmpfile" 2>/dev/null | grep -E "Linux version [0-9]" | head -1)
++      rm -f "$tmpfile"
++    fi
++  fi
++
++  # Extract only X.X.X-androidYY, discard the rest
++  echo "$ver_str" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-android[0-9]+' | head -1
++}
++
++# Numeric comparison: returns 0 if a >= b, 1 if a < b
++version_ge() {
++  local a1 a2 a3 b1 b2 b3
++  a1=$(echo "$1" | cut -d. -f1)
++  a2=$(echo "$1" | cut -d. -f2)
++  a3=$(echo "$1" | cut -d. -f3)
++  b1=$(echo "$2" | cut -d. -f1)
++  b2=$(echo "$2" | cut -d. -f2)
++  b3=$(echo "$2" | cut -d. -f3)
++  if [ "$a1" -gt "$b1" ]; then return 0; fi
++  if [ "$a1" -lt "$b1" ]; then return 1; fi
++  if [ "$a2" -gt "$b2" ]; then return 0; fi
++  if [ "$a2" -lt "$b2" ]; then return 1; fi
++  if [ "$a3" -ge "$b3" ]; then return 0; fi
++  return 1
++}
++
++# Kernel Version Check Function: Image vs. Kernel in Device
++do_kernelcheck() {
++  ui_print " " "  -> Check kernel version compatibility..."
++
++  # BYPASS: do.force_flash=1 in anykernel.sh skips check
++  if [ "$(file_getprop anykernel.sh do.force_flash)" == 1 ]; then
++    ui_print "  -> [BYPASS] do.force_flash=1: version check SKIPPED."
++    ui_print "  -> [BYPASS] Forced flash. Proceed with caution!"
++    return 0
++  fi
++
++  local new_ver dev_ver new_kver new_abranch dev_kver dev_abranch
++
++  # Version from Image file (new kernel to flash)
++  new_ver=$(extract_kernel_version "$AKHOME/Image")
++  if [ -z "$new_ver" ]; then
++    abort "  -> ERROR: Unable to read version from Image. Abort."
++  fi
++
++  # Version from the kernel on the device (target slot, already extracted by split_boot)
++  dev_ver=$(extract_kernel_version "$SPLITIMG/kernel")
++  if [ -z "$dev_ver" ]; then
++    abort "  -> ERROR: Unable to read version from device kernel. Abort."
++  fi
++
++  # Split X.X.X and androidYY
++  new_kver=$(echo "$new_ver" | cut -d- -f1)
++  new_abranch=$(echo "$new_ver" | cut -d- -f2)
++  dev_kver=$(echo "$dev_ver" | cut -d- -f1)
++  dev_abranch=$(echo "$dev_ver" | cut -d- -f2)
++
++  ui_print "  -> Image  : $new_ver"
++  ui_print "  -> Device : $dev_ver"
++
++  # Check 1: android branch must be exactly equal
++  if [ "$new_abranch" != "$dev_abranch" ]; then
++    abort "  -> MISMATCH Android branch: Image=$new_abranch | Device=$dev_abranch. Abort."
++  fi
++
++  # Check 2: kernel version Image must be >= Device
++  if ! version_ge "$new_kver" "$dev_kver"; then
++    abort "  -> MISMATCH Kernel version: Image=$new_kver < Device=$dev_kver. Abort."
++  fi
++
++  ui_print "  -> Kernel version: COMPATIBLE ($new_ver >= $dev_ver)"
++}
++
+ # boot install
+ split_boot
+-if [ -f "split_img/ramdisk.cpio" ]; then
++
++# Check: split_img/kernel is available, flash has not happened yet
++do_kernelcheck
++
++if [ -f "$SPLITIMG/ramdisk.cpio" ]; then
+     unpack_ramdisk
+     write_boot
+ else
