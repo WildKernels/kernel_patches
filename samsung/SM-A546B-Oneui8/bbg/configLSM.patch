@@ -1,6 +1,6 @@
---- a/arch/arm64/configs/s5e8835-a54xnsxx_defconfig
-+++ b/arch/arm64/configs/s5e8835-a54xnsxx_defconfig
-@@ -7876,7 +7876,7 @@
+--- a/arch/arm64/configs/s5e8835-a54xnaxx_defconfig
++++ b/arch/arm64/configs/s5e8835-a54xnaxx_defconfig
+@@ -7877,7 +7877,7 @@
  # CONFIG_EVM is not set
  CONFIG_DEFAULT_SECURITY_SELINUX=y
  # CONFIG_DEFAULT_SECURITY_DAC is not set
