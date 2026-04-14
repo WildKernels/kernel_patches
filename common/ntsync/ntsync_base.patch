@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..d95c737
 --- /dev/null
 +++ b/drivers/misc/ntsync.c
-@@ -0,0 +1,1260 @@
+@@ -0,0 +1,1272 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * ntsync.c - Kernel driver for NT synchronization primitives
@@ -30,6 +30,12 @@ index 0000000..d95c737
 +#include <linux/workqueue.h>
 +#include <linux/namei.h>
 +#include <linux/path.h>
++#include <linux/xattr.h>
++#include <linux/version.h>
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
++#include <linux/mnt_idmapping.h>
++#endif
 +
 +#define NTSYNC_NAME	"ntsync"
 +
@@ -1211,13 +1217,19 @@ index 0000000..d95c737
 +static void ntsync_fix_perms_worker(struct work_struct *work)
 +{
 +    struct path path;
-+    // Look for the device node created by ueventd
++    char *ctx = "u:object_r:gpu_device:s0";
 +    if (!kern_path("/dev/ntsync", LOOKUP_FOLLOW, &path)) {
 +        struct inode *inode = d_backing_inode(path.dentry);
 +        if (inode) {
-+            // Force 0666 to override Android's default 0600
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5,12,0)
++             __vfs_setxattr_noperm(path.dentry, "security.selinux", ctx, strlen(ctx) + 1, 0);
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
++            __vfs_setxattr_noperm(&init_user_ns, path.dentry, "security.selinux", ctx, strlen(ctx) + 1, 0);
++#else
++            __vfs_setxattr_noperm(&nop_mnt_idmap, path.dentry, "security.selinux", ctx, strlen(ctx) + 1, 0);
++#endif
 +            inode->i_mode = (inode->i_mode & ~S_IALLUGO) | 0666;
-+            pr_info("ntsync: kernel-level chmod 0666 applied\n");
++            pr_info("ntsync: Applied 0666 and gpu_device context\n");
 +        }
 +        path_put(&path);
 +    }
