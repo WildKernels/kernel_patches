@@ -1,49 +1,56 @@
-diff --git a/kernel/sucompat.c b/kernel/sucompat.c
-index 97493b1e..e2079313 100644
---- a/kernel/sucompat.c
-+++ b/kernel/sucompat.c
-@@ -125,6 +125,7 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
-     pr_info("ksu_handle_execveat_sucompat: su found\n");
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+index d12caae2..630351e7 100644
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -134,6 +134,7 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
+ 
      memcpy((void *)filename->name, ksud_path, sizeof(ksud_path));
  
-+    write_sulog('x');
-     escape_with_root_profile();
- 
-     return 0;
-@@ -149,6 +150,7 @@ int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
++	write_sulog('x');
+     ret = escape_with_root_profile();
+     if (ret)
+         pr_err("escape_with_root_profile() failed: %d\n", ret);
+@@ -160,6 +161,7 @@ int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
  
      if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
          pr_info("ksu_handle_faccessat: su->sh!\n");
-+        write_sulog('a');
-         *filename_user = sh_user_path();
-     }
- 
-@@ -165,6 +167,7 @@ int ksu_handle_stat(int *dfd, struct filename **filename, int *flags) {
- 		return 0;
++		write_sulog('a');
+ 		*filename_user = sh_user_path();
  	}
+ 
+@@ -175,6 +177,7 @@ int ksu_handle_stat(int *dfd, struct filename **filename, int *flags) {
+         return 0;
+ 
      pr_info("ksu_handle_stat: su->sh!\n");
-+    write_sulog('s');
++	write_sulog('s');
      memcpy((void *)((*filename)->name), sh_path, sizeof(sh_path));
      return 0;
  }
-@@ -181,6 +184,7 @@ int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags)
+@@ -189,6 +192,7 @@ int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags)
  
-     if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
-         pr_info("ksu_handle_stat: su->sh!\n");
-+        write_sulog('s');
-         *filename_user = sh_user_path();
-     }
- 
-diff --git a/kernel/supercalls.c b/kernel/supercalls.c
-index 5d78b861..ab494f51 100644
---- a/kernel/supercalls.c
-+++ b/kernel/supercalls.c
-@@ -952,6 +952,54 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
- 		return 0;
+ 	if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
+ 		pr_info("ksu_handle_stat: su->sh!\n");
++		write_sulog('s');
+ 		*filename_user = sh_user_path();
  	}
  
-+	unsigned long reply = (unsigned long)*arg;
-+
+diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
+index b5c9bf22..67d6164f 100644
+--- a/kernel/supercall/dispatch.c
++++ b/kernel/supercall/dispatch.c
+@@ -439,6 +439,8 @@ static int do_manage_mark(void __user *arg)
+ 
+ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg)
+ {
++    unsigned long reply = (unsigned long)*arg;
++    
+     if (magic1 != KSU_INSTALL_MAGIC1) {
+         return -EINVAL; 
+     }
+@@ -524,6 +526,52 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
+         return -EINVAL;
+     }
+ 
 +	if (magic2 == CHANGE_MANAGER_UID) {
 +		/* only root is allowed for this command */
 +		if (current_uid().val != 0)
@@ -90,6 +97,6 @@ index 5d78b861..ab494f51 100644
 +			return 0;
 +	}
 +
- 	return -EINVAL;
- }
+     if (magic2 == KSU_INSTALL_MAGIC2)
+         return ksu_supercall_reboot_handler(arg);
  
