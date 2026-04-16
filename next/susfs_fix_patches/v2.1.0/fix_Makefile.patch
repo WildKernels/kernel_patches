@@ -1,14 +1,13 @@
 diff --git a/kernel/Kbuild b/kernel/Kbuild
-index 30b676b6..dbc28247 100644
+index 0bf1f25e..eb87e088 100644
 --- a/kernel/Kbuild
 +++ b/kernel/Kbuild
-@@ -93,4 +93,12 @@ ccflags-y += -DKSU_NEW_DCACHE_FLUSH=$(KSU_NEW_DCACHE_FLUSH)
+@@ -128,4 +128,14 @@ ccflags-y += -DKSU_NEW_DCACHE_FLUSH=$(KSU_NEW_DCACHE_FLUSH)
  ccflags-y += -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat -Wno-missing-prototypes
  ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable
  
--# Keep a new line here!! Because someone may append config
 +## For susfs stuff ##
-+ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)# Keep a new line here!! Because someone may append config
++ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
 +$(eval SUSFS_VERSION=$(shell cat $(srctree)/include/linux/susfs.h | grep -E '^#define SUSFS_VERSION' | cut -d' ' -f3 | sed 's/"//g'))
 +$(info )
 +$(info -- SUSFS_VERSION: $(SUSFS_VERSION))
@@ -16,4 +15,5 @@ index 30b676b6..dbc28247 100644
 +$(info -- You have not integrated susfs in your kernel yet.)
 +$(info -- Read: https://gitlab.com/simonpunk/susfs4ksu)
 +endif
-\ No newline at end of file
++
+ # Keep a new line here!! Because someone may append config

@@ -1,8 +1,8 @@
-diff --git a/kernel/sucompat.h b/kernel/sucompat.h
-index b60cbde0..1a4ee879 100644
---- a/kernel/sucompat.h
-+++ b/kernel/sucompat.h
-@@ -10,7 +10,11 @@ void ksu_sucompat_exit(void);
+diff --git a/kernel/feature/sucompat.h b/kernel/feature/sucompat.h
+index 1ffba003..e4109b94 100644
+--- a/kernel/feature/sucompat.h
++++ b/kernel/feature/sucompat.h
+@@ -11,7 +11,11 @@ void ksu_sucompat_exit(void);
  // Handler functions exported for hook_manager
  int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
                           int *__unused_flags);
@@ -11,6 +11,6 @@ index b60cbde0..1a4ee879 100644
 +#else
  int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);
 +#endif // #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0) && defined(CONFIG_KSU_SUSFS)
- int ksu_handle_execve_sucompat(const char __user **filename_user,
-                                void *__never_use_argv, void *__never_use_envp,
-                                int *__never_use_flags);
+ long ksu_handle_execve_sucompat(const char __user **filename_user, int orig_nr, const struct pt_regs *regs);
+ 
+ #endif

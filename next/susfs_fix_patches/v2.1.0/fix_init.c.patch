@@ -1,18 +1,16 @@
-diff --git a/kernel/ksu.c b/kernel/ksu.c
-index 79fe80b3..c2a3d61f 100644
---- a/kernel/ksu.c
-+++ b/kernel/ksu.c
-@@ -5,6 +5,9 @@
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+index ec6532bc..34e7ec61 100644
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -5,6 +5,7 @@
  #include <linux/rcupdate.h>
  #include <linux/sched.h>
  #include <linux/workqueue.h>
-+#ifdef CONFIG_KSU_SUSFS
 +#include <linux/susfs.h>
-+#endif // #ifdef CONFIG_KSU_SUSFS
  
- #include "allowlist.h"
- #include "app_profile.h"
-@@ -62,28 +65,6 @@ struct cred *ksu_cred;
+ #include "policy/allowlist.h"
+ #include "policy/app_profile.h"
+@@ -62,28 +63,6 @@ struct cred *ksu_cred;
  
  int __init kernelsu_init(void)
  {
@@ -41,7 +39,7 @@ index 79fe80b3..c2a3d61f 100644
  #ifdef CONFIG_KSU_DEBUG
  	pr_alert("*************************************************************");
  	pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
-@@ -99,71 +80,40 @@ int __init kernelsu_init(void)
+@@ -99,75 +78,35 @@ int __init kernelsu_init(void)
          pr_err("prepare cred failed!\n");
      }
  
@@ -62,13 +60,11 @@ index 79fe80b3..c2a3d61f 100644
 -		// with KSU SELinux domain before enforcing SELinux, so it
 -		// can continue to access /data/app etc. after enforcement.
 -		escape_to_root_for_init();
--
++    ksu_sucompat_init();
+ 
 -		ksu_allowlist_init();
 -		ksu_load_allow_list();
-+#ifdef CONFIG_KSU_SUSFS
 +    ksu_setuid_hook_init();
-+    ksu_sucompat_init();
-+#endif // #ifdef CONFIG_KSU_SUSFS
  
 -		ksu_syscall_hook_manager_init();
 +	ksu_allowlist_init();
@@ -80,15 +76,18 @@ index 79fe80b3..c2a3d61f 100644
  
 -		ksu_boot_completed = true;
 -		track_throne(false);
--
++	ksu_ksud_init();
+ 
 -		if (!getenforce()) {
 -			pr_info("Permissive SELinux, enforcing\n");
 -			setenforce(true);
 -		}
--
++	ksu_file_wrapper_init();
+ 
 -	} else {
 -		ksu_syscall_hook_manager_init();
--
++    susfs_init();
+ 
 -		ksu_allowlist_init();
 -
 -		ksu_throne_tracker_init();
@@ -97,23 +96,16 @@ index 79fe80b3..c2a3d61f 100644
 -
 -		ksu_file_wrapper_init();
 -	}
-+	ksu_file_wrapper_init();
- 
- #ifdef MODULE
- #ifndef CONFIG_KSU_DEBUG
- 	kobject_del(&THIS_MODULE->mkobj.kobj);
- #endif
- #endif
-+
-+#ifdef CONFIG_KSU_SUSFS
-+    susfs_init();
-+#endif // #ifdef CONFIG_KSU_SUSFS
-+
+-
+-#ifdef MODULE
+-#ifndef CONFIG_KSU_DEBUG
+-	kobject_del(&THIS_MODULE->mkobj.kobj);
+-#endif
+-#endif
  	return 0;
  }
  
- extern void ksu_observer_exit(void);
- void kernelsu_exit(void)
+ void __exit kernelsu_exit(void)
  {
 -	// Phase 1: Stop all hooks first to prevent new callbacks
 -	ksu_syscall_hook_manager_exit();
@@ -122,7 +114,12 @@ index 79fe80b3..c2a3d61f 100644
  
 -	if (!ksu_late_loaded)
 -		ksu_ksud_exit();
-+	ksu_ksud_exit();
- 
+-
  	// Wait for any in-flight RCU readers (e.g. handler traversing allow_list)
  	synchronize_rcu();
+ 
+-	// Phase 2: Now safe to release data structures
++	// Now safe to release data structures
+ 	ksu_observer_exit();
+ 
+ 	ksu_throne_tracker_exit();
