@@ -1,0 +1,28 @@
+--- a/fs/namespace.c
++++ b/fs/namespace.c
+@@ -33,10 +33,25 @@
+ #include <linux/shmem_fs.h>
+ #include <linux/mnt_idmapping.h>
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
++#include <linux/susfs_def.h>
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
++
+ #include "pnode.h"
+ #include "internal.h"
+ #include <trace/hooks/blk.h>
+ 
++
++#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
++extern bool susfs_is_current_ksu_domain(void);
++extern bool susfs_is_sdcard_android_data_decrypted __read_mostly;
++
++#define CL_COPY_MNT_NS BIT(25) /* used by copy_mnt_ns() */
++
++static DEFINE_IDA(susfs_mnt_id_ida);
++static DEFINE_IDA(susfs_mnt_group_ida);
++
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+ /* Maximum number of mounts in a mount namespace */
+ static unsigned int sysctl_mount_max __read_mostly = 100000;
+ 
