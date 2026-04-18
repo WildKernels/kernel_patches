@@ -1,5 +1,5 @@
 diff --git a/kernel/Kbuild b/kernel/Kbuild
-index 0bf1f25ed..9abe7678f 100644
+index 0bf1f25ed..ae2ed859c 100644
 --- a/kernel/Kbuild
 +++ b/kernel/Kbuild
 @@ -3,18 +3,7 @@ kernelsu-objs := core/init.o
@@ -21,6 +21,24 @@ index 0bf1f25ed..9abe7678f 100644
  kernelsu-objs += extras.o
  kernelsu-objs += tiny_sulog.o
  
+@@ -95,7 +84,7 @@ $(info -- KernelSU-Next version: $(KSU_VERSION))
+ ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
+ else
+ # If there is no .git directory, use default version
+-$(warning "KSU_GIT_VERSION not defined! It is better to make KernelSU-Next a git repository!")
++$(info -- KSU_GIT_VERSION not defined; using fallback version)
+ KSU_VERSION_FALLBACK := 1
+ $(info -- KernelSU-Next version fallback: $(KSU_VERSION_FALLBACK))
+ ccflags-y += -DKSU_VERSION=$(KSU_VERSION_FALLBACK)
+@@ -106,7 +95,7 @@ $(eval KSU_VERSION_TAG=$(KSU_GIT_TAG))
+ $(info -- KernelSU-Next tag: $(KSU_VERSION_TAG))
+ ccflags-y += -DKSU_VERSION_TAG=\"$(KSU_VERSION_TAG)\"
+ else
+-$(warning "KSU_VERSION_TAG not defined! It is better to make KernelSU-Next a git submodule!")
++$(info -- KSU_VERSION_TAG not defined; using fallback tag)
+ KSU_VERSION_TAG_FALLBACK := v0.0.1
+ $(info -- KernelSU-Next tag fallback: $(KSU_VERSION_TAG_FALLBACK))
+ ccflags-y += -DKSU_VERSION_TAG=\"$(KSU_VERSION_TAG_FALLBACK)\"
 diff --git a/kernel/Kconfig b/kernel/Kconfig
 index c77016613..5c169f595 100644
 --- a/kernel/Kconfig
@@ -151,7 +169,7 @@ index 381640882..771957c4f 100644
 +
 +# Keep a new line here!! Because someone may append config
 diff --git a/kernel/core/init.c b/kernel/core/init.c
-index 368187cc2..333ed34dc 100644
+index 368187cc2..8553a98d8 100644
 --- a/kernel/core/init.c
 +++ b/kernel/core/init.c
 @@ -5,6 +5,7 @@
@@ -220,7 +238,7 @@ index 368187cc2..333ed34dc 100644
  #ifdef CONFIG_KSU_DEBUG
  	pr_alert("*************************************************************");
  	pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
-@@ -108,52 +79,21 @@ int __init kernelsu_init(void)
+@@ -108,52 +79,20 @@ int __init kernelsu_init(void)
          pr_err("prepare cred failed!\n");
      }
  
@@ -232,25 +250,25 @@ index 368187cc2..333ed34dc 100644
  
 -	if (ksu_late_loaded) {
 -		pr_info("late load mode, skipping kprobe hooks\n");
-+    ksu_sucompat_init();
- 
+-
 -		apply_kernelsu_rules();
 -		cache_sid();
 -		setup_ksu_cred();
-+	ksu_allowlist_init();
++    ksu_sucompat_init();
  
 -		// Grant current process (ksud late-load) root
 -		// with KSU SELinux domain before enforcing SELinux, so it
 -		// can continue to access /data/app etc. after enforcement.
 -		escape_to_root_for_init();
-+	ksu_throne_tracker_init();
++	ksu_allowlist_init();
  
 -		ksu_allowlist_init();
 -		ksu_load_allow_list();
-+	ksu_ksud_init();
++	ksu_throne_tracker_init();
  
 -		ksu_syscall_hook_manager_init();
--
++	ksu_ksud_init();
+ 
 -		ksu_throne_tracker_init();
 -		ksu_observer_init();
 -		ksu_file_wrapper_init();
@@ -273,13 +291,13 @@ index 368187cc2..333ed34dc 100644
 -		ksu_ksud_init();
 -
 -		ksu_file_wrapper_init();
+-	}
 +	ksu_file_wrapper_init();
- 	}
-+    susfs_init();
++	susfs_init();
  
  #ifdef MODULE
  #ifndef CONFIG_KSU_DEBUG
-@@ -165,15 +105,9 @@ int __init kernelsu_init(void)
+@@ -165,15 +104,9 @@ int __init kernelsu_init(void)
  
  void __exit kernelsu_exit(void)
  {
