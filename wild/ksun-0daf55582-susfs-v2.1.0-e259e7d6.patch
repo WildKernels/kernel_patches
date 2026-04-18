@@ -1,5 +1,5 @@
 diff --git a/kernel/Kbuild b/kernel/Kbuild
-index 0bf1f25ed..ae2ed859c 100644
+index 0bf1f25ed..9abe7678f 100644
 --- a/kernel/Kbuild
 +++ b/kernel/Kbuild
 @@ -3,18 +3,7 @@ kernelsu-objs := core/init.o
@@ -21,24 +21,6 @@ index 0bf1f25ed..ae2ed859c 100644
  kernelsu-objs += extras.o
  kernelsu-objs += tiny_sulog.o
  
-@@ -95,7 +84,7 @@ $(info -- KernelSU-Next version: $(KSU_VERSION))
- ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
- else
- # If there is no .git directory, use default version
--$(warning "KSU_GIT_VERSION not defined! It is better to make KernelSU-Next a git repository!")
-+$(info -- KSU_GIT_VERSION not defined; using fallback version)
- KSU_VERSION_FALLBACK := 1
- $(info -- KernelSU-Next version fallback: $(KSU_VERSION_FALLBACK))
- ccflags-y += -DKSU_VERSION=$(KSU_VERSION_FALLBACK)
-@@ -106,7 +95,7 @@ $(eval KSU_VERSION_TAG=$(KSU_GIT_TAG))
- $(info -- KernelSU-Next tag: $(KSU_VERSION_TAG))
- ccflags-y += -DKSU_VERSION_TAG=\"$(KSU_VERSION_TAG)\"
- else
--$(warning "KSU_VERSION_TAG not defined! It is better to make KernelSU-Next a git submodule!")
-+$(info -- KSU_VERSION_TAG not defined; using fallback tag)
- KSU_VERSION_TAG_FALLBACK := v0.0.1
- $(info -- KernelSU-Next tag fallback: $(KSU_VERSION_TAG_FALLBACK))
- ccflags-y += -DKSU_VERSION_TAG=\"$(KSU_VERSION_TAG_FALLBACK)\"
 diff --git a/kernel/Kconfig b/kernel/Kconfig
 index c77016613..5c169f595 100644
 --- a/kernel/Kconfig
