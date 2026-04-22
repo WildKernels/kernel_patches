@@ -1376,7 +1376,7 @@ index 08488da68..9aa0ae487 100644
 +
  #endif
 diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
-index e1801e83c..dcc823a93 100644
+index e1801e83c..d0ec9869d 100644
 --- a/kernel/supercall/dispatch.c
 +++ b/kernel/supercall/dispatch.c
 @@ -3,7 +3,10 @@
@@ -1738,6 +1738,19 @@ index e1801e83c..dcc823a93 100644
  static int do_nuke_ext4_sysfs(void __user *arg)
  {
      struct ksu_nuke_ext4_sysfs_cmd cmd;
+@@ -662,11 +848,7 @@ static int do_get_hook_mode(void __user *arg)
+ {
+     struct ksu_get_hook_mode_cmd cmd = {0};
+ 
+-#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
+-    strscpy(cmd.mode, "Tracepoint", sizeof(cmd.mode));
+-#else
+-    strscpy(cmd.mode, "Kprobes", sizeof(cmd.mode));
+-#endif
++    strscpy(cmd.mode, "Inline (SUSFS)", sizeof(cmd.mode));
+ 
+     if (copy_to_user(arg, &cmd, sizeof(cmd))) {
+         pr_err("get_hook_mode: copy_to_user failed\n");
 diff --git a/kernel/supercall/supercall.c b/kernel/supercall/supercall.c
 index 16aa46c72..3e387ac22 100644
 --- a/kernel/supercall/supercall.c
