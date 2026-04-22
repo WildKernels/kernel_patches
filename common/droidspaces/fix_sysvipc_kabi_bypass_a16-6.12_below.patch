@@ -1,0 +1,28 @@
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index b275cd285182..f03e0d5e49c1 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -704,6 +704,12 @@ struct task_struct {
+ 	unsigned int			rt_priority;
+ 
+ 	const struct sched_class	*sched_class;
++
++#ifndef __GENKSYMS__
++	struct sysv_sem			sysvsem;
++	struct sysv_shm			sysvshm;
++#endif
++
+ 	struct sched_entity		se;
+ 	struct sched_rt_entity		rt;
+ #ifdef CONFIG_CGROUP_SCHED
+@@ -968,8 +974,8 @@ struct task_struct {
+ 	struct nameidata		*nameidata;
+ 
+ #ifdef CONFIG_SYSVIPC
+-	struct sysv_sem			sysvsem;
+-	struct sysv_shm			sysvshm;
++	// struct sysv_sem			sysvsem;
++	// struct sysv_shm			sysvshm;
+ #endif
+ #ifdef CONFIG_DETECT_HUNG_TASK
+ 	unsigned long			last_switch_count;
