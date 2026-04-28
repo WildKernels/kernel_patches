@@ -344,7 +344,7 @@ index 3a48d8ceb..5956083a3 100644
  	pr_info("handle umount for uid: %d, pid: %d\n", new_uid, current->pid);
  
 diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
-index d5501a9b4..8b2385a45 100644
+index d5501a9b4..16a81af64 100644
 --- a/kernel/feature/sucompat.c
 +++ b/kernel/feature/sucompat.c
 @@ -11,6 +11,11 @@
@@ -359,7 +359,7 @@ index d5501a9b4..8b2385a45 100644
  
  #include "policy/allowlist.h"
  #include "policy/feature.h"
-@@ -25,18 +30,28 @@
+@@ -25,20 +30,30 @@
  #define SU_PATH "/system/bin/su"
  #define SH_PATH "/system/bin/sh"
  
@@ -373,25 +373,31 @@ index d5501a9b4..8b2385a45 100644
  static int su_compat_feature_get(u64 *value)
  {
 -	*value = ksu_su_compat_enabled ? 1 : 0;
+-	return 0;
 +    if (static_key_enabled(&ksu_su_compat_enabled))
 +        *value = 1;
 +    else
 +        *value = 0;
- 	return 0;
++    return 0;
  }
  
  static int su_compat_feature_set(u64 value)
  {
- 	bool enable = value != 0;
+-	bool enable = value != 0;
 -	ksu_su_compat_enabled = enable;
-+	if (enable)
-+		static_key_enable(&ksu_su_compat_enabled);
-+	else
-+		static_key_disable(&ksu_su_compat_enabled);
- 	pr_info("su_compat: set to %d\n", enable);
- 	return 0;
+-	pr_info("su_compat: set to %d\n", enable);
+-	return 0;
++    bool enable = value != 0;
++    if (enable)
++        static_branch_enable(&ksu_su_compat_enabled);
++    else
++        static_branch_disable(&ksu_su_compat_enabled);
++    pr_info("su_compat: set to %d\n", enable);
++    return 0;
  }
-@@ -71,110 +86,214 @@ static char __user *ksud_user_path(void)
+ 
+ static const struct ksu_feature_handler su_compat_handler = {
+@@ -71,110 +86,194 @@ static char __user *ksud_user_path(void)
  	return userspace_stack_buffer(ksud_path, sizeof(ksud_path));
  }
  
@@ -453,33 +459,15 @@ index d5501a9b4..8b2385a45 100644
 +                pr_err("!argv_user_ptr || IS_ERR(argv_user_ptr)\n");
 +                return -EFAULT;
 +            }
-+            strncpy(tmp_filename, filename->name, SUSFS_MAX_LEN_PATHNAME - 1);
-+            pending_sucompat = ksu_sulog_capture_sucompat(tmp_filename, argv_user, GFP_KERNEL);
-+            ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
 +            return 0;
 +        } else if (likely(strstr(filename->name, "/app_process") == NULL &&
-+                    strstr(filename->name, "/adbd") == NULL) &&
 +                    !susfs_is_current_proc_umounted())
 +        {
 +            pr_info("susfs: mark no sucompat checks for pid: '%d', exec: '%s'\n", current->pid, filename->name);
 +            susfs_set_current_proc_umounted();
 +            return 0;
 +        }
-+
-+#ifdef CONFIG_COMPAT
-+        if (unlikely(envp_user->is_compat))
-+            ret = ksu_adb_root_handle_execve(filename->name, (void ***)&envp_user->ptr.compat);
-+        else
-+            ret = ksu_adb_root_handle_execve(filename->name, (void ***)&envp_user->ptr.native);    
-+#else
-+        ret = ksu_adb_root_handle_execve(filename->name, (void ***)&envp_user->ptr.native);
-+#endif
-+
-+        if (ret) {
-+            pr_err("adb root failed: %d\n", ret);
-+            return ret;
-+        }
-+        return ret;
++		return 0;
 +	}
 +    return -EINVAL;
 +}
@@ -496,11 +484,11 @@ index d5501a9b4..8b2385a45 100644
 +    const char __user *argv_user_ptr = get_user_arg_ptr(*((struct user_arg_ptr*)argv_user), 0);
 +    struct ksu_sulog_pending_event *pending_sucompat = NULL;
 +    int ret;
- 
--	if (!ksu_is_allow_uid_for_current(current_uid().val)) {
++
 +    if (unlikely(!filename_ptr))
 +        return 0;
-+
+ 
+-	if (!ksu_is_allow_uid_for_current(current_uid().val)) {
 +    filename = *filename_ptr;
 +    if (IS_ERR(filename))
  		return 0;
@@ -514,7 +502,7 @@ index d5501a9b4..8b2385a45 100644
 +        return 0;
 +
 +	write_sulog('x');
-+	
++
 +    pr_info("ksu_handle_execveat_sucompat: su found\n");
 +
 +    memcpy((void *)filename->name, ksud_path, sizeof(ksud_path));
@@ -532,8 +520,6 @@ index d5501a9b4..8b2385a45 100644
 -	memset(path, 0, sizeof(path));
 -	strncpy_from_user_nofault(path, *filename_user, sizeof(path));
 +    strncpy(tmp_filename, filename->name, SUSFS_MAX_LEN_PATHNAME - 1);
-+    pending_sucompat = ksu_sulog_capture_sucompat(tmp_filename, (struct user_arg_ptr*)argv_user, GFP_KERNEL);
-+    ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
 +    return 0;
 +}
 +
