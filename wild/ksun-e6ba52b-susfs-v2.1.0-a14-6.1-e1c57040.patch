@@ -344,7 +344,7 @@ index 3a48d8ceb..5956083a3 100644
  	pr_info("handle umount for uid: %d, pid: %d\n", new_uid, current->pid);
  
 diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
-index d5501a9b4..96b17e186 100644
+index d5501a9b4..7d27f33c1 100644
 --- a/kernel/feature/sucompat.c
 +++ b/kernel/feature/sucompat.c
 @@ -11,6 +11,11 @@
@@ -465,7 +465,7 @@ index d5501a9b4..96b17e186 100644
 +                return -EFAULT;
 +            }
 +            return 0;
-+        } else if (likely(strstr(filename->name, "/app_process")) == NULL &&
++        } else if (likely(strstr(filename->name, "/app_process") == NULL) &&
 +                    !susfs_is_current_proc_umounted())
 +        {
 +            pr_info("susfs: mark no sucompat checks for pid: '%d', exec: '%s'\n", current->pid, filename->name);
@@ -571,7 +571,7 @@ index d5501a9b4..96b17e186 100644
 +    if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
 +        write_sulog('a');
 +        pr_info("ksu_handle_faccessat: su->sh!\n");
-+        filename_user = sh_user_path();
++        *filename_user = sh_user_path();
  	}
 +    return 0;
 +}
