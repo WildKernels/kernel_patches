@@ -147,10 +147,18 @@ index c77016613..5c169f595 100644
 +
  endmenu
 diff --git a/kernel/core/init.c b/kernel/core/init.c
-index 368187cc2..765995d6b 100644
+index 368187cc2..1feeee59f 100644
 --- a/kernel/core/init.c
 +++ b/kernel/core/init.c
-@@ -12,22 +12,14 @@
+@@ -5,6 +5,7 @@
+ #include <linux/rcupdate.h>
+ #include <linux/sched.h>
+ #include <linux/workqueue.h>
++#include <linux/susfs.h>
+ 
+ #include "policy/allowlist.h"
+ #include "policy/app_profile.h"
+@@ -12,22 +13,14 @@
  #include "klog.h" // IWYU pragma: keep
  #include "manager/manager_observer.h"
  #include "manager/throne_tracker.h"
@@ -175,7 +183,7 @@ index 368187cc2..765995d6b 100644
  
  // workaround for A12-5.10 kernel
  // Some third-party kernel (e.g. linegaeOS) uses wrong toolchain, which supports
-@@ -67,32 +59,9 @@ __attribute__((naked)) int __init kernelsu_init_early(void)
+@@ -67,32 +60,9 @@ __attribute__((naked)) int __init kernelsu_init_early(void)
  #endif
  
  struct cred *ksu_cred;
@@ -208,7 +216,7 @@ index 368187cc2..765995d6b 100644
  #ifdef CONFIG_KSU_DEBUG
  	pr_alert("*************************************************************");
  	pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
-@@ -103,80 +72,42 @@ int __init kernelsu_init(void)
+@@ -103,80 +73,42 @@ int __init kernelsu_init(void)
  	pr_alert("*************************************************************");
  #endif
  
