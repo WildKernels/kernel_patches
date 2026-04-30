@@ -23,12 +23,17 @@ index 0c5e545..c124afb 100644
  
  struct pid init_struct_pid = {
  	.count		= REFCOUNT_INIT(1),
-@@ -89,6 +92,29 @@ struct pid_namespace init_pid_ns = {
+@@ -89,6 +92,30 @@ struct pid_namespace init_pid_ns = {
  };
  EXPORT_SYMBOL_GPL(init_pid_ns);
  
 +static struct task_struct ghost_task;
 +static bool ghost_task_ready = false;
++
++#define set_task_usage(target, value) _Generic((target), \
++	refcount_t: refcount_set, \
++	atomic_t:   atomic_set    \
++)(&(target), (value))
 +
 +void __init init_ghost_task(void)
 +{
@@ -38,11 +43,7 @@ index 0c5e545..c124afb 100644
 +	ghost_task.pid = -1;
 +	ghost_task.tgid = -1;
 +
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
-+	atomic_set(&ghost_task.usage, 1000);
-+#else
-+	refcount_set(&ghost_task.usage, 1000);
-+#endif
++	set_task_usage(ghost_task.usage, 1000);
 +#ifdef CONFIG_REFCOUNT_FULL
 +	refcount_set(&ghost_task.refcount, 1000);
 +#endif
@@ -53,7 +54,7 @@ index 0c5e545..c124afb 100644
  /*
   * Note: disable interrupts while the pidmap_lock is held as an
   * interrupt might come in and do read_lock(&tasklist_lock).
-@@ -422,7 +448,24 @@ struct task_struct *find_task_by_pid_ns(pid_t nr, struct pid_namespace *ns)
+@@ -422,7 +449,24 @@ struct task_struct *find_task_by_pid_ns(pid_t nr, struct pid_namespace *ns)
  
  struct task_struct *find_task_by_vpid(pid_t vnr)
  {
