@@ -1,23 +1,20 @@
 diff --git a/kernel/Kbuild b/kernel/Kbuild
-index 0bf1f25e..9abe7678 100644
+index 1ee438b3..e5cb8dee 100644
 --- a/kernel/Kbuild
 +++ b/kernel/Kbuild
-@@ -3,18 +3,7 @@ kernelsu-objs := core/init.o
- kernelsu-objs += feature/kernel_umount.o
- kernelsu-objs += feature/sucompat.o
+@@ -5,15 +5,11 @@ kernelsu-objs += feature/sucompat.o
  
--kernelsu-objs += hook/lsm_hook.o
+ kernelsu-objs += hook/lsm_hook.o
  kernelsu-objs += hook/setuid_hook.o
 -kernelsu-objs += hook/syscall_event_bridge.o
 -kernelsu-objs += hook/syscall_hook_manager.o
--kernelsu-objs += hook/tp_marker.o
--ifeq ($(CONFIG_ARM64),y)
--kernelsu-objs += hook/arm64/patch_memory.o
+ kernelsu-objs += hook/tp_marker.o
+ ifeq ($(CONFIG_ARM64),y)
+ kernelsu-objs += hook/arm64/patch_memory.o
 -kernelsu-objs += hook/arm64/syscall_hook.o
--else ifeq ($(CONFIG_X86_64),y)
--kernelsu-objs += hook/x86_64/patch_memory.o
+ else ifeq ($(CONFIG_X86_64),y)
+ kernelsu-objs += hook/x86_64/patch_memory.o
 -kernelsu-objs += hook/x86_64/syscall_hook.o
--endif
+ endif
  kernelsu-objs += extras.o
  kernelsu-objs += tiny_sulog.o
- 
