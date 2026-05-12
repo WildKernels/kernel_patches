@@ -1,7 +1,7 @@
-diff --git a/kernel/apk_sign.c b/kernel/apk_sign.c
+diff --git a/kernel/manager/apk_sign.c b/kernel/manager/apk_sign.c
 index 3f2ae2d4..96a3c861 100644
---- a/kernel/apk_sign.c
-+++ b/kernel/apk_sign.c
+--- a/kernel/manager/apk_sign.c
++++ b/kernel/manager/apk_sign.c
 @@ -18,6 +18,10 @@
  #include "app_profile.h"
  #include "klog.h" // IWYU pragma: keep
