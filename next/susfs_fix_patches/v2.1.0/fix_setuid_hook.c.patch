@@ -1,20 +1,26 @@
 diff --git a/kernel/hook/setuid_hook.c b/kernel/hook/setuid_hook.c
-index d3aef3c1..238a9e4e 100644
+index 3cccc780..c4e86245 100644
 --- a/kernel/hook/setuid_hook.c
 +++ b/kernel/hook/setuid_hook.c
-@@ -81,6 +81,11 @@ int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
+@@ -27,14 +27,14 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
+ 
+     pr_info("handle_setresuid from %d to %d\n", old_uid, new_uid);
+ 
+-    if (unlikely(is_uid_manager(new_uid))) {
++    if (likely(ksu_is_manager_appid_valid()) &&
++        unlikely(ksu_get_manager_appid() == new_uid % PER_USER_RANGE)) {
+         spin_lock_irq(&current->sighand->siglock);
+         ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);
+-        ksu_set_task_tracepoint_flag(current);
+         spin_unlock_irq(&current->sighand->siglock);
+ 
+         pr_info("install fd for manager: %d\n", new_uid);
+-        ksu_install_fd();
++        ksu_install_file_wrapper(KSU_MANAGER_FD);
          return 0;
      }
  
-+    // Check if spawned process is normal user app and needs to be umounted
-+    if (likely(is_zygote_normal_app_uid(new_uid) && ksu_uid_should_umount(new_uid)))
-+        goto do_umount;
-+
-+
-     if (ksu_is_allow_uid_for_current(new_uid)) {
-         if (current->seccomp.mode == SECCOMP_MODE_FILTER &&
-             current->seccomp.filter) {
-@@ -88,14 +93,20 @@ int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
+@@ -45,9 +45,6 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
              ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);
              spin_unlock_irq(&current->sighand->siglock);
          }
@@ -23,18 +29,4 @@ index d3aef3c1..238a9e4e 100644
 -        ksu_clear_task_tracepoint_flag_if_needed(current);
      }
  
-+    return 0;
-+
-+do_umount:
      // Handle kernel umount
-     ksu_handle_umount(old_uid, new_uid);
- 
-+    // Handle extra susfs work
-+    ksu_handle_extra_susfs_work();
-+
-+    // Mark current proc as umounted
-+    susfs_set_current_proc_umounted();
-+
-     return 0;
- }
- 

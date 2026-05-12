@@ -1,0 +1,15 @@
+diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
+index ef1611f2..a05b5f0c 100644
+--- a/kernel/policy/app_profile.c
++++ b/kernel/policy/app_profile.c
+@@ -182,10 +182,6 @@ int escape_with_root_profile(void)
+ 
+     disable_seccomp();
+ 
+-    for_each_thread (p, t) {
+-        ksu_set_task_tracepoint_flag(t);
+-    }
+-
+     setup_mount_ns(profile->namespaces);
+     ksu_put_root_profile(profile);
+     return 0;
