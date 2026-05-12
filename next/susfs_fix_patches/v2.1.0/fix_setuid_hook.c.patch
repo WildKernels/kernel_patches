@@ -1,10 +1,15 @@
 diff --git a/kernel/hook/setuid_hook.c b/kernel/hook/setuid_hook.c
-index 3cccc780..c4e86245 100644
+index 3cccc780..89c6079f 100644
 --- a/kernel/hook/setuid_hook.c
 +++ b/kernel/hook/setuid_hook.c
-@@ -27,14 +27,14 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
+@@ -25,19 +25,25 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
+ {
+     // we rely on the fact that zygote always call setresuid(3) with same uids
  
-     pr_info("handle_setresuid from %d to %d\n", old_uid, new_uid);
+-    pr_info("handle_setresuid from %d to %d\n", old_uid, new_uid);
++    // Check if spawned process is isolated service first, and force to do umount if so
++    if (is_zygote_isolated_service_uid(new_uid))
++        goto do_umount;
  
 -    if (unlikely(is_uid_manager(new_uid))) {
 +    if (likely(ksu_is_manager_appid_valid()) &&
@@ -20,7 +25,14 @@ index 3cccc780..c4e86245 100644
          return 0;
      }
  
-@@ -45,9 +45,6 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
++    // Check if spawned process is normal user app and needs to be umounted
++    if (likely(is_zygote_normal_app_uid(new_uid) && ksu_uid_should_umount(new_uid)))
++        goto do_umount;
++
+     if (ksu_is_allow_uid_for_current(new_uid)) {
+         if (current->seccomp.mode == SECCOMP_MODE_FILTER &&
+             current->seccomp.filter) {
+@@ -45,14 +51,17 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
              ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);
              spin_unlock_irq(&current->sighand->siglock);
          }
@@ -29,4 +41,15 @@ index 3cccc780..c4e86245 100644
 -        ksu_clear_task_tracepoint_flag_if_needed(current);
      }
  
++    return 0;
++
++do_umount:
      // Handle kernel umount
+     ksu_handle_umount(old_uid, new_uid);
+ 
++    // Handle extra susfs work
++    ksu_handle_extra_susfs_work();
++
+     return 0;
+ }
+ 
