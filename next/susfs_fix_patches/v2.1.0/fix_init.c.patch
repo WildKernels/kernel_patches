@@ -66,12 +66,15 @@ index f5f565a4..01be0bad 100644
  	if (allow_shell) {
  		pr_alert("shell is allowed at init!");
  	}
-@@ -117,74 +91,31 @@ int __init kernelsu_init(void)
+@@ -117,74 +91,34 @@ int __init kernelsu_init(void)
  		pr_err("prepare cred failed!\n");
  	}
  
 -	ksu_syscall_hook_init();
 -
++#ifdef CONFIG_KSU_SUSFS
++    susfs_init();
++#endif // #ifdef KSU_SUSFS
  	ksu_feature_init();
  
 -	ksu_lsm_hook_init();
