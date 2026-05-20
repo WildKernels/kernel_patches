@@ -16,10 +16,10 @@ index 33115933..bc025c18 100644
  static int su_compat_feature_get(u64 *value)
  {
 -	*value = ksu_su_compat_enabled ? 1 : 0;
-+    if (static_key_enabled(&ksu_su_compat_enabled))
++    if (static_key_enabled(&ksu_su_compat_enabled)) {
 +        *value = 1;
-+    else
-+        *value = 0;
++    } else {
++        *value = 0; }
  	return 0;
  }
  
@@ -27,10 +27,10 @@ index 33115933..bc025c18 100644
  {
  	bool enable = value != 0;
 -	ksu_su_compat_enabled = enable;
-+    if (enable)
++    if (enable) {
 +        static_branch_enable(&ksu_su_compat_enabled);
-+    else
-+        static_branch_disable(&ksu_su_compat_enabled);
++    } else {
++        static_branch_disable(&ksu_su_compat_enabled); }
  	pr_info("su_compat: set to %d\n", enable);
  	return 0;
  }
