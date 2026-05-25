@@ -1,5 +1,3 @@
-diff --git a/kernel/core/init.c b/kernel/core/init.c
-index f5f565a4..01be0bad 100644
 --- a/kernel/core/init.c
 +++ b/kernel/core/init.c
 @@ -5,6 +5,7 @@
@@ -10,12 +8,13 @@ index f5f565a4..01be0bad 100644
  
  #include "policy/allowlist.h"
  #include "policy/app_profile.h"
-@@ -18,16 +19,10 @@
+@@ -18,17 +19,10 @@
  #include "ksu.h"
  #include "infra/file_wrapper.h"
  #include "selinux/selinux.h"
 -#include "hook/syscall_hook.h"
  #include "feature/selinux_hide.h"
+-#include "infra/symbol_resolver.h"
 +#include "hook/setuid_hook.h"
 +#include "feature/sucompat.h"
  
@@ -29,7 +28,7 @@ index f5f565a4..01be0bad 100644
  
  // workaround for A12-5.10 kernel
  // Some third-party kernel (e.g. linegaeOS) uses wrong toolchain, which supports
-@@ -77,28 +72,6 @@ module_param(allow_shell, bool, 0);
+@@ -78,28 +72,6 @@
  
  int __init kernelsu_init(void)
  {
@@ -58,7 +57,7 @@ index f5f565a4..01be0bad 100644
  #ifdef CONFIG_KSU_DEBUG
  	pr_alert("*************************************************************");
  	pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
-@@ -108,6 +81,7 @@ int __init kernelsu_init(void)
+@@ -109,6 +81,7 @@
  	pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
  	pr_alert("*************************************************************");
  #endif
@@ -66,10 +65,11 @@ index f5f565a4..01be0bad 100644
  	if (allow_shell) {
  		pr_alert("shell is allowed at init!");
  	}
-@@ -117,74 +91,34 @@ int __init kernelsu_init(void)
+@@ -118,75 +91,34 @@
  		pr_err("prepare cred failed!\n");
  	}
  
+-	ksu_init_symbol_resolver();
 -	ksu_syscall_hook_init();
 -
 +#ifdef CONFIG_KSU_SUSFS
@@ -152,7 +152,7 @@ index f5f565a4..01be0bad 100644
  
  	// Wait for any in-flight RCU readers (e.g. handler traversing allow_list)
  	synchronize_rcu();
-@@ -198,8 +129,6 @@ void __exit kernelsu_exit(void)
+@@ -200,8 +132,6 @@
  
  	ksu_selinux_hide_exit();
  
