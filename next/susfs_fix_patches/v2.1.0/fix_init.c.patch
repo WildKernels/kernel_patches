@@ -8,27 +8,7 @@
  
  #include "policy/allowlist.h"
  #include "policy/app_profile.h"
-@@ -18,17 +19,10 @@
- #include "ksu.h"
- #include "infra/file_wrapper.h"
- #include "selinux/selinux.h"
--#include "hook/syscall_hook.h"
- #include "feature/selinux_hide.h"
--#include "infra/symbol_resolver.h"
-+#include "hook/setuid_hook.h"
-+#include "feature/sucompat.h"
- 
--#if defined(__x86_64__)
--#include <asm/cpufeature.h>
--#include <linux/version.h>
--#ifndef X86_FEATURE_INDIRECT_SAFE
--#error "FATAL: Your kernel is missing the indirect syscall bypass patches!"
--#endif
--#endif
- 
- // workaround for A12-5.10 kernel
- // Some third-party kernel (e.g. linegaeOS) uses wrong toolchain, which supports
-@@ -78,28 +72,6 @@
+@@ -72,28 +73,6 @@
  
  int __init kernelsu_init(void)
  {
@@ -57,7 +37,7 @@
  #ifdef CONFIG_KSU_DEBUG
  	pr_alert("*************************************************************");
  	pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
-@@ -109,6 +81,7 @@
+@@ -103,6 +82,7 @@
  	pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
  	pr_alert("*************************************************************");
  #endif
@@ -65,7 +45,7 @@
  	if (allow_shell) {
  		pr_alert("shell is allowed at init!");
  	}
-@@ -118,75 +91,34 @@
+@@ -112,77 +92,36 @@
  		pr_err("prepare cred failed!\n");
  	}
  
@@ -76,6 +56,8 @@
 +    susfs_init();
 +#endif // #ifdef KSU_SUSFS
  	ksu_feature_init();
+ 
+ 	ksu_adb_root_init();
  
 -	ksu_lsm_hook_init();
 -
@@ -94,29 +76,29 @@
 -		// with KSU SELinux domain before enforcing SELinux, so it
 -		// can continue to access /data/app etc. after enforcement.
 -		escape_to_root_for_init();
-+    ksu_sucompat_init();
- 
+-
 -		ksu_allowlist_init();
 -		ksu_load_allow_list();
-+    ksu_setuid_hook_init();
++    ksu_sucompat_init();
  
 -		ksu_syscall_hook_manager_init();
-+    ksu_allowlist_init();
++    ksu_setuid_hook_init();
  
 -		ksu_throne_tracker_init();
 -		ksu_observer_init();
 -		ksu_file_wrapper_init();
-+    ksu_throne_tracker_init();
++    ksu_allowlist_init();
  
 -		ksu_boot_completed = true;
 -		track_throne(false);
-+    ksu_ksud_init();
++    ksu_throne_tracker_init();
  
 -		if (!getenforce()) {
 -			pr_info("Permissive SELinux, enforcing\n");
 -			setenforce(true);
 -		}
--
++    ksu_ksud_init();
+ 
 -	} else {
 -		ksu_syscall_hook_manager_init();
 -
@@ -152,12 +134,12 @@
  
  	// Wait for any in-flight RCU readers (e.g. handler traversing allow_list)
  	synchronize_rcu();
-@@ -200,8 +132,6 @@
+@@ -196,8 +135,6 @@
  
  	ksu_selinux_hide_exit();
  
 -	ksu_lsm_hook_exit();
 -
- 	ksu_feature_exit();
+ 	ksu_adb_root_exit();
  
- 	if (ksu_cred) {
+ 	ksu_feature_exit();
