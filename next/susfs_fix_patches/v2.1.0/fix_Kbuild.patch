@@ -1,8 +1,6 @@
-diff --git a/kernel/Kbuild b/kernel/Kbuild
-index 606e4e85..845e53a0 100644
 --- a/kernel/Kbuild
 +++ b/kernel/Kbuild
-@@ -3,25 +3,13 @@ kernelsu-objs := core/init.o
+@@ -3,17 +3,11 @@
  kernelsu-objs += feature/kernel_umount.o
  kernelsu-objs += feature/sucompat.o
  
@@ -11,20 +9,12 @@ index 606e4e85..845e53a0 100644
 -kernelsu-objs += hook/syscall_event_bridge.o
 -kernelsu-objs += hook/syscall_hook_manager.o
 -kernelsu-objs += hook/tp_marker.o
--ifeq ($(CONFIG_ARM64),y)
--kernelsu-objs += hook/arm64/patch_memory.o
+ ifeq ($(CONFIG_ARM64),y)
+ kernelsu-objs += hook/arm64/patch_memory.o
 -kernelsu-objs += hook/arm64/syscall_hook.o
--else ifeq ($(CONFIG_X86_64),y)
--kernelsu-objs += hook/x86_64/patch_memory.o
+ else ifeq ($(CONFIG_X86_64),y)
+ kernelsu-objs += hook/x86_64/patch_memory.o
 -kernelsu-objs += hook/x86_64/syscall_hook.o
--endif
+ endif
  kernelsu-objs += extras.o
  kernelsu-objs += tiny_sulog.o
- 
- kernelsu-objs += infra/file_wrapper.o
- kernelsu-objs += infra/seccomp_cache.o
- kernelsu-objs += infra/su_mount_ns.o
--kernelsu-objs += infra/symbol_resolver.o
- 
- ifneq ($(CONFIG_KSU_DISABLE_MANAGER),y)
- kernelsu-objs += manager/apk_sign.o
