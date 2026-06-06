@@ -1,16 +1,15 @@
-diff --git a/kernel/feature/sucompat.h b/kernel/feature/sucompat.h
-index 1ffba003..672613c6 100644
 --- a/kernel/feature/sucompat.h
 +++ b/kernel/feature/sucompat.h
-@@ -3,15 +3,17 @@
+@@ -3,7 +3,7 @@
  #include <asm/ptrace.h>
  #include <linux/types.h>
  
 -extern bool ksu_su_compat_enabled;
--
++extern struct static_key_true ksu_su_compat_enabled;
+ 
  void ksu_sucompat_init(void);
  void ksu_sucompat_exit(void);
- 
+@@ -11,7 +11,10 @@
  // Handler functions exported for hook_manager
  int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
                           int *__unused_flags);
@@ -18,7 +17,7 @@ index 1ffba003..672613c6 100644
 +int ksu_handle_stat(int *dfd, struct filename **filename, int *flags);
 +#else
  int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);
+-long ksu_handle_execve_sucompat(const char __user **filename_user, int orig_nr, const struct pt_regs *regs);
 +#endif // #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0) && defined(CONFIG_KSU_SUSFS)
- long ksu_handle_execve_sucompat(const char __user **filename_user, int orig_nr, const struct pt_regs *regs);
  
  #endif
