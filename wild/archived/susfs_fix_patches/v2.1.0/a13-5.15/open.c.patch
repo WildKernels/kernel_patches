@@ -1,0 +1,12 @@
+--- a/fs/open.c
++++ b/fs/open.c
+@@ -33,6 +33,9 @@
+ #include <linux/dnotify.h>
+ #include <linux/compat.h>
+ 
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs_def.h>
++#endif
+ #include "internal.h"
+ #include <trace/hooks/syscall_check.h>
+ 

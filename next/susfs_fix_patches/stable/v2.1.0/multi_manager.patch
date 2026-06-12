@@ -1,0 +1,29 @@
+diff --git a/kernel/apk_sign.c b/kernel/apk_sign.c
+index 3f2ae2d4..96a3c861 100644
+--- a/kernel/apk_sign.c
++++ b/kernel/apk_sign.c
+@@ -18,6 +18,10 @@
+ #include "app_profile.h"
+ #include "klog.h" // IWYU pragma: keep
+ 
++#ifdef KSU_MANAGER_PACKAGE
++#define WILD_KSU_PACKAGE_NAME "com.twj.wksu"
++#endif
++
+ struct sdesc {
+ 	struct shash_desc shash;
+ 	char ctx[];
+@@ -356,9 +360,11 @@ bool is_manager_apk(char *path)
+ 	}
+ 
+ 	// pkg is `<real package>`
+-	if (strncmp(pkg, KSU_MANAGER_PACKAGE, sizeof(KSU_MANAGER_PACKAGE))) {
++	if (strncmp(pkg, WILD_KSU_PACKAGE_NAME, sizeof(WILD_KSU_PACKAGE_NAME)) || strncmp(pkg, KSU_MANAGER_PACKAGE, sizeof(KSU_MANAGER_PACKAGE))) {
+ 		return false;
+ 	}
+ #endif
+-	return check_v2_signature(path, EXPECTED_MANAGER_SIZE, EXPECTED_MANAGER_HASH);
++	return (check_v2_signature(path, EXPECTED_MANAGER_SIZE, EXPECTED_MANAGER_HASH)
++			|| check_v2_signature(path, 0x338, "f26471a28031130362bce7eebffb9a0b8afc3095f163ce0c75a309f03b644a1f") // pershoot Manager
++			|| check_v2_signature(path, 0x381, "52d52d8c8bfbe53dc2b6ff1c613184e2c03013e090fe8905d8e3d5dc2658c2e4")); // Wild_KSU Manager
+ }

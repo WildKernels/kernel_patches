@@ -1,0 +1,56 @@
+--- a/fs/notify/fdinfo.c
++++ b/fs/notify/fdinfo.c
+@@ -104,13 +104,52 @@
+ 	inode_mark = container_of(mark, struct inotify_inode_mark, fsn_mark);
+ 	inode = igrab(fsnotify_conn_inode(mark->connector));
+ 	if (inode) {
++#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
++		u32 mask;
++		mnt = real_mount(file->f_path.mnt);
++		if (mnt->mnt_id >= DEFAULT_KSU_MNT_ID &&
++			likely(susfs_is_current_proc_umounted()))
++		{
++			struct path path;
++			char *pathname = kmalloc(PAGE_SIZE, GFP_KERNEL);
++			char *dpath;
++			if (!pathname) {
++				goto orig_flow;
++			}
++			dpath = d_path(&file->f_path, pathname, PAGE_SIZE);
++			if (!dpath) {
++				goto out_kfree;
++			}
++			if (kern_path(dpath, 0, &path)) {
++				goto out_kfree;
++			}
++			if (!path.dentry->d_inode) {
++				goto out_path_put;
++			}
++			mask = mark->mask & IN_ALL_EVENTS;
++			seq_printf(m, "inotify wd:%x ino:%lx sdev:%x mask:%x ignored_mask:0 ",
++					inode_mark->wd, path.dentry->d_inode->i_ino, path.dentry->d_inode->i_sb->s_dev,
++					mask);
++			show_mark_fhandle(m, path.dentry->d_inode);
++			seq_putc(m, '\n');
++			path_put(&path);
++			kfree(pathname);
++			iput(inode);
++			return;
++		out_path_put:
++			path_put(&path);
++		out_kfree:
++			kfree(pathname);
++		}
++	orig_flow:
++		mask = mark->mask & IN_ALL_EVENTS;
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+ 		/*
+ 		 * IN_ALL_EVENTS represents all of the mask bits
+ 		 * that we expose to userspace.  There is at
+ 		 * least one bit (FS_EVENT_ON_CHILD) which is
+ 		 * used only internally to the kernel.
+ 		 */
+-		u32 mask = mark->mask & IN_ALL_EVENTS;
+ 		seq_printf(m, "inotify wd:%x ino:%lx sdev:%x mask:%x ignored_mask:%x ",
+ 			   inode_mark->wd, inode->i_ino, inode->i_sb->s_dev,
+ 			   mask, mark->ignored_mask);

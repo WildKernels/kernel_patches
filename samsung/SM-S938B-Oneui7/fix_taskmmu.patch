@@ -1,12 +1,19 @@
 --- a/fs/proc/task_mmu.c
 +++ b/fs/proc/task_mmu.c
-@@ -1763,6 +1763,9 @@
- 	unsigned long start_vaddr;
- 	unsigned long end_vaddr;
- 	int ret = 0, copied = 0;
-+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
-+	struct vm_area_struct *vma;
-+#endif
+@@ -1063,8 +1063,16 @@
+ 				continue;
  
- 	if (!mm || !mmget_not_zero(mm))
- 		goto out;
+ 			/* Case 4 above */
+-			if (vma->vm_end > last_vma_end)
++			if (vma->vm_end > last_vma_end) {
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++				if (!vma->vm_file || !(SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))) {
++					smap_gather_stats(vma, &mss, last_vma_end);
++					last_vma_end = vma->vm_end;
++				}
++#else
+ 				smap_gather_stats(vma, &mss, last_vma_end);
+++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
++			}		
+ 		}
+ 	} for_each_vma(vmi, vma);

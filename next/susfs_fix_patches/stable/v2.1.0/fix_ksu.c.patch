@@ -1,0 +1,72 @@
+diff --git a/kernel/ksu.c b/kernel/ksu.c
+index 6dbad36f..33984a31 100644
+--- a/kernel/ksu.c
++++ b/kernel/ksu.c
+@@ -5,6 +5,9 @@
+ #include <linux/sched.h>
+ #include <linux/workqueue.h>
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs.h>
++#endif // #ifdef CONFIG_KSU_SUSFS
+ 
+ #include "allowlist.h"
+ #include "feature.h"
+ #include "klog.h" // IWYU pragma: keep
+@@ -104,9 +107,19 @@ int __init kernelsu_init(void)
+ 		ksu_allowlist_init();
+ 		ksu_load_allow_list();
+ 
++#ifndef CONFIG_KSU_SUSFS
+ 		ksu_syscall_hook_manager_init();
++#else
++        ksu_setuid_hook_init();
++        ksu_sucompat_init();
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 
+ 		ksu_throne_tracker_init();
++
++#ifdef CONFIG_KSU_SUSFS
++        susfs_init();
++#endif // #ifdef CONFIG_KSU_SUSFS
++
+ 		ksu_observer_init();
+ 		ksu_file_wrapper_init();
+ 
+@@ -114,13 +127,24 @@ int __init kernelsu_init(void)
+ 		track_throne(false);
+ 
+ 	} else {
++#ifndef CONFIG_KSU_SUSFS
+ 		ksu_syscall_hook_manager_init();
++#else
++        ksu_setuid_hook_init();
++        ksu_sucompat_init();
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 
+ 		ksu_allowlist_init();
+ 
+ 		ksu_throne_tracker_init();
+ 
++#ifdef CONFIG_KSU_SUSFS
++        susfs_init();
++#endif // #ifdef CONFIG_KSU_SUSFS
++
++#ifndef CONFIG_KSU_SUSFS
+ 		ksu_ksud_init();
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 
+ 		ksu_file_wrapper_init();
+ 	}
+@@ -142,10 +166,12 @@ void kernelsu_exit(void)
+ 
+ 	ksu_observer_exit();
+ 
++#ifndef CONFIG_KSU_SUSFS
+ 	if (!ksu_late_loaded)
+ 		ksu_ksud_exit();
+ 
+ 	ksu_syscall_hook_manager_exit();
++#endif // #ifndef CONFIG_KSU_SUSFS
+ 
+ 	ksu_supercalls_exit();
+ 

@@ -1,0 +1,30 @@
+--- a/fs/namespace.c
++++ b/fs/namespace.c
+@@ -30,13 +30,13 @@
+ #include <linux/task_work.h>
+ #include <linux/sched/task.h>
++#include <linux/fslog.h>
++#ifdef CONFIG_KDP_NS
++#include <linux/kdp.h>
++#endif
+ #include <uapi/linux/mount.h>
+ #include <linux/fs_context.h>
+ #include <linux/shmem_fs.h>
+ #include <linux/mnt_idmapping.h>
+-#include <linux/fslog.h>
+-#ifdef CONFIG_KDP_NS
+-#include <linux/kdp.h>
+-#endif
+
+ #include "pnode.h"
+ #include "internal.h"
+@@ -3867,9 +3867,5 @@
+ 	copy_flags = CL_COPY_UNBINDABLE | CL_EXPIRE;
+ 	if (user_ns != ns->user_ns)
+ 		copy_flags |= CL_SHARED_TO_SLAVE;
+-#ifdef CONFIG_KDP_NS
+-	new = copy_tree(old, ((struct kdp_mount *)old)->mnt->mnt_root, copy_flags);
+-#else
+ 	new = copy_tree(old, old->mnt.mnt_root, copy_flags);
+-#endif
+ 	if (IS_ERR(new)) {

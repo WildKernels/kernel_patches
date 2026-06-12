@@ -1,0 +1,38 @@
+diff --git a/kernel/Kbuild b/kernel/Kbuild
+index 606e4e85..c24efbbf 100644
+--- a/kernel/Kbuild
++++ b/kernel/Kbuild
+@@ -129,4 +129,14 @@ ccflags-y += -DKSU_NEW_DCACHE_FLUSH=$(KSU_NEW_DCACHE_FLUSH)
+ ccflags-y += -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat -Wno-missing-prototypes
+ ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable
+ 
++## For susfs stuff ##
++ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
++$(eval SUSFS_VERSION=$(shell cat $(srctree)/include/linux/susfs.h | grep -E '^#define SUSFS_VERSION' | cut -d' ' -f3 | sed 's/"//g'))
++$(info )
++$(info -- SUSFS_VERSION: $(SUSFS_VERSION))
++else
++$(info -- You have not integrated susfs in your kernel yet.)
++$(info -- Read: https://gitlab.com/simonpunk/susfs4ksu)
++endif
++
+ # Keep a new line here!! Because someone may append config
+diff --git a/kernel/runtime/boot_event.c b/kernel/runtime/boot_event.c
+index 4df4e001..44f145cb 100644
+--- a/kernel/runtime/boot_event.c
++++ b/kernel/runtime/boot_event.c
+@@ -15,8 +15,6 @@ bool ksu_module_mounted __read_mostly = false;
+ bool ksu_boot_completed __read_mostly = false;
+ extern struct static_key_true ksu_is_input_hook_enabled;
+ 
+-extern void ksu_avc_spoof_late_init(void);
+-
+ void on_post_fs_data(void)
+ {
+     static bool done = false;
+@@ -73,5 +71,4 @@ void on_boot_completed(void)
+     pr_info("on_boot_completed!\n");
+     track_throne(true);
+     ksu_selinux_hide_drop_backup_if_unused();
+-    ksu_avc_spoof_late_init();
+ }
