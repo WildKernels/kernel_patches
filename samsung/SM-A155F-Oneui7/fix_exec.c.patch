@@ -1,12 +1,9 @@
---- a/fs/exec.c
-+++ b/fs/exec.c
-@@ -62,10 +62,15 @@
- #include <linux/fs_struct.h>
- #include <linux/oom.h>
+--- a/fs/exec.c	2026-06-10 08:57:32.872088370 +0200
++++ exec.c	2026-06-10 11:25:29.722431657 +0200
+@@ -64,6 +64,10 @@
  #include <linux/compat.h>
  #include <linux/vmalloc.h>
  #include <linux/io_uring.h>
-+
 +#ifdef CONFIG_KSU_SUSFS
 +#include <linux/susfs_def.h>
 +#endif
@@ -14,5 +11,3 @@
  #include <linux/task_integrity.h>
  
  #include <linux/uaccess.h>
- #include <asm/mmu_context.h>
- #include <asm/tlb.h>

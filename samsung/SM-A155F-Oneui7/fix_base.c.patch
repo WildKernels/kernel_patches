@@ -1,18 +1,13 @@
---- a/fs/proc/base.c
-+++ b/fs/proc/base.c
-@@ -95,10 +95,15 @@
- #include <linux/sched/stat.h>
- #include <linux/posix-timers.h>
+--- a/fs/proc/base.c	2026-06-10 08:57:32.878552358 +0200
++++ b/fs/proc/base.c	2026-06-10 11:23:30.605591314 +0200
+@@ -97,6 +97,10 @@
  #include <linux/time_namespace.h>
  #include <linux/resctrl.h>
  #include <linux/cpufreq_times.h>
-+
-+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++#if defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)
 +#include <linux/susfs_def.h>
-+#endif
++#endif // #if defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)
 +
  #include <linux/task_integrity.h>
  #include <linux/proca.h>
  #include <trace/events/oom.h>
- #include "internal.h"
- #include "fd.h"
