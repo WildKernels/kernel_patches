@@ -1,0 +1,256 @@
+diff --git a/kernel/extras.c b/kernel/extras.c
+index 0cb3ffd0..601873b2 100644
+--- a/kernel/extras.c
++++ b/kernel/extras.c
+@@ -22,7 +22,7 @@ static atomic_t disable_spoof = ATOMIC_INIT(1);
+ void ksu_avc_spoof_enable();
+ void ksu_avc_spoof_disable();
+ 
+-static bool ksu_avc_spoof_enabled = true;
++bool ksu_avc_spoof_enabled = true;
+ static bool boot_completed = false;
+ 
+ static int avc_spoof_feature_get(u64 *value)
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+index b4580141..f4c30431 100644
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -194,6 +194,7 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
+         return 0;
+ 	}
+ 
++	ksu_compat_sulog('x');
+ 	pr_info("ksu_handle_execveat_sucompat: su found\n");
+ 
+ 	memcpy((void *)filename->name, ksud_path, sizeof(ksud_path));
+@@ -235,6 +236,7 @@ int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
+             pr_err("ksu_handle_faccessat: su found but NOT allowed! Because current process is running in chrooted environment\n");
+             return 0;
+         }
++		ksu_compat_sulog('a');
+         pr_info("ksu_handle_faccessat: su->sh!\n");
+         *filename_user = sh_user_path();
+ 	}
+@@ -255,6 +257,7 @@ int ksu_handle_stat(int *dfd, struct filename **filename, int *flags) {
+         pr_err("ksu_handle_stat: su found but NOT allowed! Because current process is running in chrooted environment\n");
+         return 0;
+ 	}
++	ksu_compat_sulog('s');
+     pr_info("ksu_handle_stat: su->sh!\n");
+     memcpy((void *)((*filename)->name), sh_path, sizeof(sh_path));
+     return 0;
+@@ -275,6 +278,7 @@ int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags)
+             pr_err("ksu_handle_stat: su found but NOT allowed! Because current process is running in chrooted environment\n");
+             return 0;
+         }
++		ksu_compat_sulog('s');
+         pr_info("ksu_handle_stat: su->sh!\n");
+         *filename_user = sh_user_path();
+ 	}
+diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
+index 92640df7..8626802f 100644
+--- a/kernel/supercall/dispatch.c
++++ b/kernel/supercall/dispatch.c
+@@ -24,6 +24,10 @@
+ #include "sulog/fd.h"
+ #include "supercall/supercall.h"
+ 
++#if defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KSU_SUSFS_SPOOF_UNAME)
++extern struct static_key_false susfs_is_uname_spoof_buffer_set;
++#endif
++
+ static int do_grant_root(void __user *arg)
+ {
+     int ret;
+@@ -472,6 +476,141 @@ static int do_manage_mark(void __user *arg)
+     return 0;
+ }
+ 
++static char toolkit_orig_release[65] = {0};
++static char toolkit_orig_version[65] = {0};
++
++void ksu_toolkit_uname_reset(void)
++{
++    if (toolkit_orig_release[0] != '\0') {
++        struct new_utsname *u = utsname();
++        pr_info("ksu: resetting toolkit uname memory to stock\n");
++        down_write(&uts_sem);
++        strscpy(u->release, toolkit_orig_release, sizeof(u->release));
++        strscpy(u->version, toolkit_orig_version, sizeof(u->version));
++        up_write(&uts_sem);
++    }
++}
++
++int ksu_handle_toolkit_reboot(int magic2, unsigned int cmd, void __user *arg)
++{
++    unsigned long reply = (unsigned long)arg;
++
++    if (magic2 == CHANGE_MANAGER_UID) {
++        /* only root is allowed for this command */
++        if (current_uid().val != 0)
++            return -EPERM;
++        pr_info("ksu_handle_toolkit_reboot: ksu_set_manager_appid to: %d\n", cmd);
++        ksu_set_manager_appid(cmd);
++        if (cmd == ksu_get_manager_appid()) {
++            if (copy_to_user(arg, &reply, sizeof(reply))) {
++                pr_info("ksu_handle_toolkit_reboot: reply fail\n");
++                return -EFAULT;
++            }
++        }
++        return 0;
++    }
++
++    if (magic2 == GET_SULOG_DUMP_V2) {
++        /* only root is allowed for this command */
++        if (current_uid().val != 0)
++            return -EPERM;
++
++        int ret = ksu_sulog_handle_compat_dump(arg);
++        if (ret)
++            return ret;
++
++        if (copy_to_user(arg, &reply, sizeof(reply))) {
++            pr_info("ksu_handle_toolkit_reboot: reply fail\n");
++            return -EFAULT;
++        }
++        return 0;
++    }
++
++    if (magic2 == CHANGE_KSUVER) {
++        /* only root is allowed for this command */
++        if (current_uid().val != 0)
++            return -EPERM;
++        pr_info("ksu_handle_toolkit_reboot: ksu_change_ksuver to: %d\n", cmd);
++        ksuver_override = cmd;
++        if (copy_to_user(arg, &reply, sizeof(reply))) {
++            pr_info("ksu_handle_toolkit_reboot: reply fail\n");
++            return -EFAULT;
++        }
++        return 0;
++    }
++
++    // WARNING!!! triple ptr zone! ***
++    // https://wiki.c2.com/?ThreeStarProgrammer
++    if (magic2 == CHANGE_SPOOF_UNAME) {
++        /* only root is allowed for this command */
++        if (current_uid().val != 0)
++            return -EPERM;
++
++        char release_buf[65];
++        char version_buf[65];
++
++        // basically void * void __user * void __user *arg
++        void __user **ppptr = (void __user **)arg;
++        uint64_t u_pptr = 0;
++        uint64_t u_ptr = 0;
++
++        // arg here is ***, pull out user-space ** via copy_from_user
++        if (copy_from_user(&u_pptr, ppptr, sizeof(u_pptr)))
++            return -EFAULT;
++
++        // now we got the __user **
++        // we cannot dereference this as this is __user
++        // we just do another copy_from_user to get it
++        if (copy_from_user(&u_ptr, (void __user *)u_pptr, sizeof(u_ptr)))
++            return -EFAULT;
++
++        // for release
++        if (strncpy_from_user(release_buf, (char __user *)u_ptr, sizeof(release_buf)) < 0)
++            return -EFAULT;
++        release_buf[sizeof(release_buf) - 1] = '\0';
++
++        // for version
++        if (strncpy_from_user(version_buf, (char __user *)(u_ptr + strlen(release_buf) + 1), sizeof(version_buf)) < 0)
++            return -EFAULT;
++        version_buf[sizeof(version_buf) - 1] = '\0';
++
++#if defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KSU_SUSFS_SPOOF_UNAME)
++        if (static_branch_unlikely(&susfs_is_uname_spoof_buffer_set) && (strcmp(release_buf, "default") || strcmp(version_buf, "default"))) {
++            pr_info("susfs: SuSFS uname active, blocking toolkit apply\n");
++            return -EBUSY;
++        }
++#endif
++
++        if (toolkit_orig_release[0] == '\0') {
++            struct new_utsname *u_curr = utsname();
++            // we save current version as the original before modifying
++            strscpy(toolkit_orig_release, u_curr->release, sizeof(toolkit_orig_release));
++            strscpy(toolkit_orig_version, u_curr->version, sizeof(toolkit_orig_version));
++        }
++
++        // so user can reset
++        if (!strcmp(release_buf, "default") || !strcmp(version_buf, "default")) {
++            memcpy(release_buf, toolkit_orig_release, sizeof(release_buf));
++            memcpy(version_buf, toolkit_orig_version, sizeof(version_buf));
++        }
++
++        struct new_utsname *u = utsname();
++        down_write(&uts_sem);
++        strscpy(u->release, release_buf, sizeof(u->release));
++        strscpy(u->version, version_buf, sizeof(u->version));
++        up_write(&uts_sem);
++
++        // we write our confirmation on **
++        if (copy_to_user(arg, &reply, sizeof(reply))) {
++            pr_info("ksu_handle_toolkit_reboot: reply fail\n");
++            return -EFAULT;
++        }
++        return 0;
++    }
++
++    return -EINVAL;
++}
++
+ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg)
+ {
+     if (magic1 != KSU_INSTALL_MAGIC1) {
+@@ -506,9 +645,17 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
+                 return 0;
+ #endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+ #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+-            case CMD_SUSFS_SET_UNAME:
++            case CMD_SUSFS_SET_UNAME: {
++                struct st_susfs_uname info;
++                if (!copy_from_user(&info, (struct st_susfs_uname __user *)*arg, sizeof(info))) {
++                    if (strcmp(info.release, "default") || strcmp(info.version, "default")) {
++                        // Dead man's switch: If enabling SuSFS, reset the Toolkit's global memory changes
++                        ksu_toolkit_uname_reset();
++                    }
++                }
+                 susfs_set_uname(arg);
+                 return 0;
++            }
+ #endif // #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+ #ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
+             case CMD_SUSFS_ENABLE_LOG:
+@@ -530,9 +677,20 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
+                 susfs_add_sus_map(arg);
+                 return 0;
+ #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
+-            case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING:
++            case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING: {
++                struct st_susfs_avc_log_spoofing info;
++                if (!copy_from_user(&info, (struct st_susfs_avc_log_spoofing __user *)*arg, sizeof(info))) {
++                    if (info.enabled) {
++                        extern bool ksu_avc_spoof_enabled;
++                        extern void ksu_avc_spoof_disable(void);
++                        if (ksu_avc_spoof_enabled) {
++                            ksu_avc_spoof_disable();
++                        }
++                    }
++                }
+                 susfs_set_avc_log_spoofing(arg);
+                 return 0;
++            }
+             case CMD_SUSFS_SHOW_ENABLED_FEATURES:
+                 susfs_get_enabled_features(arg);
+                 return 0;
+@@ -550,7 +708,7 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
+     if (magic2 == KSU_INSTALL_MAGIC2)
+         return ksu_supercall_reboot_handler(arg);
+ 
+-    return -EINVAL;
++    return ksu_handle_toolkit_reboot(magic2, cmd, *arg);
+ }
+ 
+ static int do_nuke_ext4_sysfs(void __user *arg)

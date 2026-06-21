@@ -1,0 +1,103 @@
+diff --git a/kernel/Kbuild b/kernel/Kbuild
+index 889d0306..4cdef512 100644
+--- a/kernel/Kbuild
++++ b/kernel/Kbuild
+@@ -4,25 +4,13 @@ kernelsu-objs += feature/kernel_umount.o
+ kernelsu-objs += feature/sulog.o
+ kernelsu-objs += feature/sucompat.o
+ 
+-kernelsu-objs += hook/lsm_hook.o
+ kernelsu-objs += hook/setuid_hook.o
+-kernelsu-objs += hook/syscall_event_bridge.o
+-kernelsu-objs += hook/syscall_hook_manager.o
+-kernelsu-objs += hook/tp_marker.o
+-ifeq ($(CONFIG_ARM64),y)
+-kernelsu-objs += hook/arm64/patch_memory.o
+-kernelsu-objs += hook/arm64/syscall_hook.o
+-else ifeq ($(CONFIG_X86_64),y)
+-kernelsu-objs += hook/x86_64/patch_memory.o
+-kernelsu-objs += hook/x86_64/syscall_hook.o
+-endif
+ kernelsu-objs += extras.o
+ 
+ kernelsu-objs += infra/file_wrapper.o
+ kernelsu-objs += infra/event_queue.o
+ kernelsu-objs += infra/seccomp_cache.o
+ kernelsu-objs += infra/su_mount_ns.o
+-kernelsu-objs += infra/symbol_resolver.o
+ 
+ ifneq ($(CONFIG_KSU_DISABLE_MANAGER),y)
+ kernelsu-objs += manager/apk_sign.o
+@@ -147,4 +135,14 @@ ccflags-y += -DKSU_NEW_DCACHE_FLUSH=$(KSU_NEW_DCACHE_FLUSH)
+ ccflags-y += -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat -Wno-missing-prototypes
+ ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable
+ 
++## For susfs stuff ##
++ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
++$(eval SUSFS_VERSION=$(shell cat $(srctree)/include/linux/susfs.h | grep -E '^#define SUSFS_VERSION' | cut -d' ' -f3 | sed 's/"//g'))
++$(info )
++$(info -- SUSFS_VERSION: $(SUSFS_VERSION))
++else
++$(info -- You have not integrated susfs in your kernel yet.)
++$(info -- Read: https://gitlab.com/simonpunk/susfs4ksu)
++endif
++
+ # Keep a new line here!! Because someone may append config
+diff --git a/kernel/Makefile b/kernel/Makefile
+index 93f5388f..d40d0ec1 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -24,14 +24,4 @@ format:
+ check-format:
+ 	find . \( -name "*.c" -o -name "*.h" \) -print0 | xargs -0 clang-format --dry-run --Werror
+ 
+-## For susfs stuff ##
+-ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
+-$(eval SUSFS_VERSION=$(shell cat $(srctree)/include/linux/susfs.h | grep -E '^#define SUSFS_VERSION' | cut -d' ' -f3 | sed 's/"//g'))
+-$(info )
+-$(info -- SUSFS_VERSION: $(SUSFS_VERSION))
+-else
+-$(info -- You have not integrated susfs in your kernel yet.)
+-$(info -- Read: https://gitlab.com/simonpunk/susfs4ksu)
+-endif
+-
+ # Keep a new line here!! Because someone may append config
+diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
+index 1b34903f..390a9146 100644
+--- a/kernel/feature/selinux_hide.c
++++ b/kernel/feature/selinux_hide.c
+@@ -36,13 +36,13 @@ int security_sid_to_context_with_policy(struct selinux_policy *policy, u32 sid,
+                                                u32 *scontext_len);
+ void security_compute_av_user_with_policy(struct selinux_policy *policy, u32 ssid, u32 tsid, u16 tclass,
+                                                  struct av_decision *avd);
+-extern void security_dump_masked_av_fn(struct policydb *policydb,
++extern __weak void security_dump_masked_av_fn(struct policydb *policydb,
+ 				    struct context *scontext,
+ 				    struct context *tcontext,
+ 				    u16 tclass,
+ 				    u32 permissions,
+ 				    const char *reason);
+-extern void context_struct_compute_av_fn(struct policydb *policydb,
++extern __weak void context_struct_compute_av_fn(struct policydb *policydb,
+ 				      struct context *scontext,
+ 				      struct context *tcontext,
+ 				      u16 tclass,
+diff --git a/kernel/runtime/boot_event.c b/kernel/runtime/boot_event.c
+index 23daaa66..99dcb7dd 100644
+--- a/kernel/runtime/boot_event.c
++++ b/kernel/runtime/boot_event.c
+@@ -15,8 +15,6 @@ bool ksu_module_mounted __read_mostly = false;
+ bool ksu_boot_completed __read_mostly = false;
+ extern struct static_key_true ksu_is_input_hook_enabled;
+ 
+-extern void ksu_avc_spoof_late_init(void);
+-
+ void on_post_fs_data(void)
+ {
+     static bool done = false;
+@@ -74,5 +72,4 @@ void on_boot_completed(void)
+     pr_info("on_boot_completed!\n");
+     track_throne(true);
+     ksu_selinux_hide_drop_backup_if_unused();
+-    ksu_avc_spoof_late_init();
+ }
