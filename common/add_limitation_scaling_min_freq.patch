@@ -53,7 +53,7 @@ index 153563506c36c..ef05e46e8b4b7 100644
 +static ssize_t store_scaling_min_freq_limit
 +(struct cpufreq_policy *policy, const char *buf, size_t count)
 +{
-+	unsigned long val;
++	unsigned int val;
 +	int ret;
 +
 +	ret = sscanf(buf, "%u", &val);
