@@ -17,7 +17,7 @@ index ef05e46e8b4b7..f54c142ed607f 100644
  static LIST_HEAD(cpufreq_policy_list);
  
 -static unsigned int min_limit[3] = {INT_MAX, INT_MAX, INT_MAX};
-+#define MAX_CLUSTERS 3
++#define MIN_LIMIT_STORE_COUNT 3
  
 -static int get_index_by_cpu(const unsigned int cpu)
 -{
@@ -32,11 +32,11 @@ index ef05e46e8b4b7..f54c142ed607f 100644
 +    unsigned int value;
 +};
 +
-+static struct cpumask_uint_kv cpumask_min_limit_store[MAX_CLUSTERS] __read_mostly;
++static struct cpumask_uint_kv cpumask_min_limit_store[MIN_LIMIT_STORE_COUNT] __read_mostly;
 +
 +static void store_cpumask_min_limit(const cpumask_var_t key, const unsigned int value) {
 +	int i;
-+	for (i = 0; i < MAX_CLUSTERS; i++) {
++	for (i = 0; i < MIN_LIMIT_STORE_COUNT; i++) {
 +		if (cpumask_empty(cpumask_min_limit_store[i].key) || cpumask_equal(cpumask_min_limit_store[i].key, key)) {
 +			cpumask_copy(cpumask_min_limit_store[i].key, key);
 +			cpumask_min_limit_store[i].value = value;
@@ -48,7 +48,7 @@ index ef05e46e8b4b7..f54c142ed607f 100644
 +
 +static unsigned int get_cpumask_min_limit(const cpumask_var_t key) {
 +	int i;
-+	for (i = 0; i < MAX_CLUSTERS; i++) {
++	for (i = 0; i < MIN_LIMIT_STORE_COUNT; i++) {
 +		if (cpumask_equal(cpumask_min_limit_store[i].key, key)) {
 +		    return cpumask_min_limit_store[i].value;
 +		}
