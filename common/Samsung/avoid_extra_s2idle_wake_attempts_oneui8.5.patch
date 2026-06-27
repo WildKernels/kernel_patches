@@ -19,16 +19,17 @@ diff --git a/drivers/base/power/wakeup.c b/drivers/base/power/wakeup.c
 index 770bb04b7ed8b..093fad92e8e51 100644
 --- a/drivers/base/power/wakeup.c
 +++ b/drivers/base/power/wakeup.c
-@@ -950,9 +950,9 @@
+@@ -950,9 +950,10 @@
  
  void pm_system_wakeup(void)
  {
 -	atomic_inc(&pm_abort_suspend);
 -	suspend_abort_fs_sync();
 -	s2idle_wake();
-+	if (atomic_inc_return_relaxed(&pm_abort_suspend) == 1)
++	if (atomic_inc_return_relaxed(&pm_abort_suspend) == 1) {
 +	    suspend_abort_fs_sync();
 +	    s2idle_wake();
++	}
  }
  EXPORT_SYMBOL_GPL(pm_system_wakeup);
  
