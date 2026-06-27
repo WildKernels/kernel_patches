@@ -13,22 +13,22 @@ this safe.
 Signed-off-by: Sultan Alsawaf <sultan@kerneltoast.com>
 ---
  drivers/base/power/wakeup.c | 4 ++--
- 1 file changed, 2 insertions(+), 2 deletions(-)
+ 1 file changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/drivers/base/power/wakeup.c b/drivers/base/power/wakeup.c
 index 770bb04b7ed8b..093fad92e8e51 100644
 --- a/drivers/base/power/wakeup.c
 +++ b/drivers/base/power/wakeup.c
-@@ -935,9 +935,9 @@ EXPORT_SYMBOL_GPL(pm_wakeup_pending);
+@@ -950,9 +950,9 @@
  
  void pm_system_wakeup(void)
  {
 -	atomic_inc(&pm_abort_suspend);
-- suspend_abort_fs_sync();
+-	suspend_abort_fs_sync();
 -	s2idle_wake();
 +	if (atomic_inc_return_relaxed(&pm_abort_suspend) == 1)
-+   suspend_abort_fs_sync();
-+		s2idle_wake();
++	    suspend_abort_fs_sync();
++	    s2idle_wake();
  }
  EXPORT_SYMBOL_GPL(pm_system_wakeup);
  
