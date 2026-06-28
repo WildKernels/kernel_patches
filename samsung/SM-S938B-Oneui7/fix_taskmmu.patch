@@ -12,7 +12,7 @@
 +				}
 +#else
  				smap_gather_stats(vma, &mss, last_vma_end);
-++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 +			}		
  		}
  	} for_each_vma(vmi, vma);
