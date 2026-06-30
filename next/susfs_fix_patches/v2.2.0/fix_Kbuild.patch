@@ -1,5 +1,5 @@
 diff --git a/kernel/Kbuild b/kernel/Kbuild
-index 889d0306..4cdef512 100644
+index 889d030..4cdef51 100644
 --- a/kernel/Kbuild
 +++ b/kernel/Kbuild
 @@ -4,25 +4,13 @@ kernelsu-objs += feature/kernel_umount.o
@@ -44,7 +44,7 @@ index 889d0306..4cdef512 100644
 +
  # Keep a new line here!! Because someone may append config
 diff --git a/kernel/Makefile b/kernel/Makefile
-index 93f5388f..d40d0ec1 100644
+index 93f5388..d40d0ec 100644
 --- a/kernel/Makefile
 +++ b/kernel/Makefile
 @@ -24,14 +24,4 @@ format:
@@ -63,7 +63,7 @@ index 93f5388f..d40d0ec1 100644
 -
  # Keep a new line here!! Because someone may append config
 diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
-index 1b34903f..390a9146 100644
+index 1b34903..390a914 100644
 --- a/kernel/feature/selinux_hide.c
 +++ b/kernel/feature/selinux_hide.c
 @@ -36,13 +36,13 @@ int security_sid_to_context_with_policy(struct selinux_policy *policy, u32 sid,
@@ -83,7 +83,7 @@ index 1b34903f..390a9146 100644
  				      struct context *tcontext,
  				      u16 tclass,
 diff --git a/kernel/runtime/boot_event.c b/kernel/runtime/boot_event.c
-index 23daaa66..99dcb7dd 100644
+index 23daaa6..99dcb7d 100644
 --- a/kernel/runtime/boot_event.c
 +++ b/kernel/runtime/boot_event.c
 @@ -15,8 +15,6 @@ bool ksu_module_mounted __read_mostly = false;

@@ -1,8 +1,8 @@
 diff --git a/kernel/supercall/supercall.c b/kernel/supercall/supercall.c
-index 1a397320..6881d092 100644
+index 1a39732..0c3bee1 100644
 --- a/kernel/supercall/supercall.c
 +++ b/kernel/supercall/supercall.c
-@@ -83,169 +83,31 @@ static void ksu_install_fd_tw_func(struct callback_head *cb)
+@@ -83,169 +83,32 @@ static void ksu_install_fd_tw_func(struct callback_head *cb)
      kfree(tw);
  }
  
@@ -51,13 +51,11 @@ index 1a397320..6881d092 100644
 +    if (!tw)
          return 0;
 -    }
- 
+-
 -    if (magic2 == GET_SULOG_DUMP_V2) {
 -        if (current_uid().val != 0)
 -            return 0;
-+    tw->outp = (int __user *)(*arg);
-+    tw->cb.func = ksu_install_fd_tw_func;
- 
+-
 -        int ret = ksu_sulog_handle_compat_dump((void __user *)arg4);
 -        if (ret)
 -            return 0;
@@ -65,11 +63,13 @@ index 1a397320..6881d092 100644
 -        if (copy_to_user((void __user *)arg4, &reply, sizeof(reply) ))
 -            return 0;
 -    }
--
+ 
 -    if (magic2 == CHANGE_KSUVER) {
 -        if (current_uid().val != 0)
 -            return 0;
--
++    tw->outp = (int __user *)(*arg);
++    tw->cb.func = ksu_install_fd_tw_func;
+ 
 -        pr_info("sys_reboot: ksu_change_ksuver to: %d\n", cmd);
 -        ksuver_override = cmd;
 -
@@ -167,7 +167,7 @@ index 1a397320..6881d092 100644
 -    int rc;
 -
      ksu_supercall_dump_commands();
--
+ 
 -    rc = register_kprobe(&reboot_kp);
 -    if (rc) {
 -        pr_err("reboot kprobe failed: %d\n", rc);

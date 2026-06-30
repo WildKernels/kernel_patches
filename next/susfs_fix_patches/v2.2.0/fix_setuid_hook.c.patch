@@ -1,8 +1,8 @@
 diff --git a/kernel/hook/setuid_hook.c b/kernel/hook/setuid_hook.c
-index ff232021..0e579624 100644
+index ff23202..9e2bc15 100644
 --- a/kernel/hook/setuid_hook.c
 +++ b/kernel/hook/setuid_hook.c
-@@ -20,40 +20,67 @@
+@@ -20,40 +20,66 @@
  #include "manager/manager_identity.h"
  #include "infra/seccomp_cache.h"
  #include "supercall/supercall.h"
@@ -16,7 +16,7 @@ index ff232021..0e579624 100644
 +
 +static inline void ksu_handle_extra_susfs_work(void)
  {
-     // we rely on the fact that zygote always call setresuid(3) with same uids
+-    // we rely on the fact that zygote always call setresuid(3) with same uids
 +    if (work_pending(&susfs_extra_works))
 +        return;
 +
