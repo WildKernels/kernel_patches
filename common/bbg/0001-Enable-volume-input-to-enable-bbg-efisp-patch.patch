@@ -1,50 +1,23 @@
-From f373febe50b89763e6e8726a1311728e39249138 Mon Sep 17 00:00:00 2001
+From e0169787aafa148a55e25bdd3aae004980084c00 Mon Sep 17 00:00:00 2001
 From: fatalcoder524 <11532648+fatalcoder524@users.noreply.github.com>
-Date: Thu, 11 Jun 2026 20:24:31 +0530
+Date: Tue, 7 Jul 2026 08:32:46 +0000
 Subject: [PATCH] Enable volume input to enable bbg efisp patch
 
 ---
- anykernel.sh | 89 ++++++++++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 89 insertions(+)
+ anykernel.sh | 65 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 65 insertions(+)
 
 diff --git a/anykernel.sh b/anykernel.sh
-index 7ac0233..be54fde 100644
+index 6a97197..5360e0b 100755
 --- a/anykernel.sh
 +++ b/anykernel.sh
-@@ -50,6 +50,93 @@ $ksu_supported || abort "  -> Non-GKI device, abort."
+@@ -51,6 +51,71 @@ $ksu_supported || abort "  -> Non-GKI device, abort."
  # boot install
  split_boot
  
++# Menu to conditionally patch BBG for abl/efisp whitelisting
++##################################################
 +SELECTED_STR="  [->] Selected:"
-+KEY_RESULT=""
-+
-+find_input_device() {
-+  for dev in /dev/input/event*; do
-+    if getevent -p "$dev" 2>/dev/null | grep -qE "KEY_VOLUMEUP|KEY_VOLUMEDOWN"; then
-+      echo "$dev"
-+      return 0
-+    fi
-+  done
-+  echo "/dev/input/event2" # Fallback
-+}
-+
-+INPUT_DEV=$(find_input_device)
-+
-+handle_input() {
-+  while true; do
-+    local event=$(getevent -lqc "$INPUT_DEV" 2>/dev/null | grep -m1 'DOWN')
-+    case "$event" in
-+    *KEY_VOLUMEUP*)
-+      KEY_RESULT="up"
-+      return 0
-+      ;;
-+    *KEY_VOLUMEDOWN*)
-+      KEY_RESULT="down"
-+      return 0
-+      ;;
-+    esac
-+  done
-+}
 +
 +show_menu() {
 +  local selected=1
@@ -52,9 +25,10 @@ index 7ac0233..be54fde 100644
 +  if [ $total -eq 2 ]; then
 +    while true; do
 +      handle_input
++      KEY_RESULT=$(cat /tmp/ak3_key_result 2>/dev/null)
 +      case "$KEY_RESULT" in
-+      "up") return 1 ;;
-+      "down") return 2 ;;
++      "KEY_VOLUMEUP") return 1 ;;
++      "KEY_VOLUMEDOWN"|"TIMEOUT") return 2 ;;
 +      esac
 +    done
 +  else
@@ -63,9 +37,12 @@ index 7ac0233..be54fde 100644
 +      ui_print "➔ $current"
 +      ui_print " "
 +      handle_input
++      KEY_RESULT=$(cat /tmp/ak3_key_result 2>/dev/null)
 +      case "$KEY_RESULT" in
-+      "up") selected=$((selected % total + 1)) ;;
-+      "down")
++      "KEY_VOLUMEUP") 
++		selected=$((selected % total + 1))
++		;;
++      "KEY_VOLUMEDOWN"|"TIMEOUT")
 +        ui_print "$SELECTED_STR $current"
 +        return $selected
 +        ;;
@@ -101,19 +78,11 @@ index 7ac0233..be54fde 100644
 +    ui_print "Flashing the kernel as is with full BBG security!!!"
 +    patch_cmdline "oplusboot.secure_user_mode" ""
 +fi
++##################################################
 +
  if [ -f "$SPLITIMG/ramdisk.cpio" ]; then
      unpack_ramdisk
      write_boot
-@@ -57,6 +144,8 @@ else
-     flash_boot
- fi
- 
-+killall getevent 2>/dev/null
-+
- ui_print " "
- ui_print "WildKernels Telegram Channel:"
- ui_print "https://t.me/WildKernelsTG"
 -- 
-2.52.0.windows.1
+2.47.3
 
