@@ -1,0 +1,44 @@
+From 0902ebc68b03655f8b34eb1182b359165d96f1e1 Mon Sep 17 00:00:00 2001
+From: fatalcoder524 <11532648+fatalcoder524@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 14:56:29 +0530
+Subject: [PATCH] Fake Patch config_data dynamically
+
+---
+ kernel/Makefile | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/Makefile b/kernel/Makefile
+index 0ddf5ea..e0fd7d0 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -151,7 +151,8 @@ KCOV_INSTRUMENT_stackleak.o := n
+ 
+ obj-$(CONFIG_SCF_TORTURE_TEST) += scftorture.o
+ 
+-$(obj)/configs.o: $(obj)/config_data.gz
++CFLAGS_configs.o += -D__FORCE_REBUILD__="$(shell date +%s)"
++$(obj)/configs.o: $(obj)/config_data.gz FORCE
+ 
+ targets += config_data config_data.gz
+ $(obj)/config_data.gz: $(obj)/config_data FORCE
+@@ -159,7 +160,16 @@ $(obj)/config_data.gz: $(obj)/config_data FORCE
+ 
+ filechk_cat = cat $<
+ 
+-$(obj)/config_data: $(KCONFIG_CONFIG) FORCE
++CONFIG_FAKE_DISABLE ?=
++export CONFIG_FAKE_DISABLE
++CONFIG_OPTIONS_LIST := $(strip $(CONFIG_FAKE_DISABLE))
++
++# Dynamically point Kbuild to a pre-stripped file instead of the raw root config
++ifneq ($(CONFIG_OPTIONS_LIST),)
++KCONFIG_CONFIG_PATCHED := $(shell sed $(foreach opt,$(CONFIG_OPTIONS_LIST),-e 's|^$(opt)=.*|\# $(opt) is not set|') $(KCONFIG_CONFIG) > .config.patched && echo ".config.patched")
++endif
++
++$(obj)/config_data: $(if $(KCONFIG_CONFIG_PATCHED),$(KCONFIG_CONFIG_PATCHED),$(KCONFIG_CONFIG)) FORCE
+ 	$(call filechk,cat)
+ 
+ $(obj)/kheaders.o: $(obj)/kheaders_data.tar.xz
+-- 
+2.47.3
+
