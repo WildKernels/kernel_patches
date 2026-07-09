@@ -1,0 +1,36 @@
+From bb851b1ac017ffdff1a0054e09e8fe853d9ee9e6 Mon Sep 17 00:00:00 2001
+From: fatalcoder524 <11532648+fatalcoder524@users.noreply.github.com>
+Date: Thu, 9 Jul 2026 00:26:09 +0530
+Subject: [PATCH] Guard USER_NS for non-root users
+
+---
+ kernel/user_namespace.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/kernel/user_namespace.c b/kernel/user_namespace.c
+index 5481ba4..7b132e0 100644
+--- a/kernel/user_namespace.c
++++ b/kernel/user_namespace.c
+@@ -86,6 +86,9 @@ int create_user_ns(struct cred *new)
+ 	struct ucounts *ucounts;
+ 	int ret, i;
+ 
++	if(!ns_capable(current_user_ns(), CAP_SYS_ADMIN))
++		return -EPERM;
++
+ 	ret = -ENOSPC;
+ 	if (parent_ns->level > 32)
+ 		goto fail;
+@@ -173,6 +176,9 @@ int unshare_userns(unsigned long unshare_flags, struct cred **new_cred)
+ 	struct cred *cred;
+ 	int err = -ENOMEM;
+ 
++	if((unshare_flags & CLONE_NEWUSER) && !ns_capable(current_user_ns(), CAP_SYS_ADMIN))
++		return -EPERM;
++
+ 	if (!(unshare_flags & CLONE_NEWUSER))
+ 		return 0;
+ 
+-- 
+2.47.3
+
