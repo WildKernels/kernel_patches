@@ -1,0 +1,135 @@
+From f6d5ac9e08e9ae210cb8af3e0b80524fbdb08a1b Mon Sep 17 00:00:00 2001
+From: fatalcoder524 <11532648+fatalcoder524@users.noreply.github.com>
+Date: Tue, 7 Jul 2026 11:54:52 +0000
+Subject: [PATCH] Support conditional vendor modules blacklisting
+
+---
+ arch/arm64/Kconfig |  7 +++++
+ kernel/module.c    | 73 +++++++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 79 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
+index bcc7ab2..d7ac979 100644
+--- a/arch/arm64/Kconfig
++++ b/arch/arm64/Kconfig
+@@ -2175,6 +2175,13 @@ source "drivers/cpuidle/Kconfig"
+ 
+ source "drivers/cpufreq/Kconfig"
+ 
++config DEBLOAT_VENDOR_MODULES
++	string "Debloat specific custom modules"
++	default ""
++	help
++	  Pass a comma-separated list of module names to block.
++	  Example: "oplus_network_tuning,oplus_bsp_zsmalloc"
++
+ endmenu
+ 
+ source "drivers/acpi/Kconfig"
+diff --git a/kernel/module.c b/kernel/module.c
+index bcadcef..d30e74c 100644
+--- a/kernel/module.c
++++ b/kernel/module.c
+@@ -71,6 +71,60 @@
+ #define ARCH_SHF_SMALL 0
+ #endif
+ 
++#ifndef __GENKSYMS__
++#include <linux/bootconfig.h>
++#endif
++
++extern char *saved_command_line; 
++
++DEFINE_STATIC_KEY_TRUE(vendor_debloat_key);
++
++static bool __init is_normal_boot(void)
++{
++	const char *mode;
++
++	mode = xbc_find_value("androidboot.mode", NULL);
++	if (!mode) {
++		char *p = strstr(saved_command_line, "androidboot.mode=");
++		static char buf[32];
++
++		if (p) {
++			size_t len;
++			p += strlen("androidboot.mode=");
++			len = strcspn(p, " \t\n");
++			if (len >= sizeof(buf))
++				len = sizeof(buf) - 1;
++			memcpy(buf, p, len);
++			buf[len] = '\0';
++			mode = buf;
++		}
++	}
++
++	if (mode && (!strcmp(mode, "normal") || !strcmp(mode, "reboot")))
++		return true;
++
++	// Value check skipped as recovery partition is different and boot is diffrent
++	if (xbc_find_value("androidboot.force_normal_boot", NULL) || strstr(saved_command_line, "androidboot.force_normal_boot"))
++		return true;
++
++	if (strstr(saved_command_line, "oplusboot.mode=normal") || strstr(saved_command_line, "oplusboot.mode=reboot"))
++		return true;
++
++	return false;
++}
++
++static int __init init_vendor_debloat_boot_check(void)
++{
++	if (is_normal_boot()) {
++		pr_info("Boot Mode: Standard state. Debloater remains ACTIVE.\n");
++	} else {
++		pr_info("Boot Mode: Non-standard boot detected. Disabling module debloater.\n");
++		static_branch_disable(&vendor_debloat_key);
++	}
++	return 0;
++}
++early_initcall(init_vendor_debloat_boot_check);
++
+ /*
+  * Modules' sections will be aligned on page boundaries
+  * to ensure complete separation of code and data, but
+@@ -3584,13 +3638,14 @@ int __weak module_frob_arch_sections(Elf_Ehdr *hdr,
+ 
+ /* module_blacklist is a comma-separated list of module names */
+ static char *module_blacklist;
++static const char *custom_module_blacklist = CONFIG_DEBLOAT_VENDOR_MODULES;
+ static bool blacklisted(const char *module_name)
+ {
+ 	const char *p;
+ 	size_t len;
+ 
+ 	if (!module_blacklist)
+-		return false;
++		goto custom_blacklist;
+ 
+ 	for (p = module_blacklist; *p; p += len) {
+ 		len = strcspn(p, ",");
+@@ -3599,6 +3654,22 @@ static bool blacklisted(const char *module_name)
+ 		if (p[len] == ',')
+ 			len++;
+ 	}
++
++	custom_blacklist:
++	if (static_branch_likely(&vendor_debloat_key)) {
++		if (!custom_module_blacklist || custom_module_blacklist[0] == '\0')
++			goto out;
++
++		for (p = custom_module_blacklist; *p; p += len) {
++			len = strcspn(p, ",");
++			if (strlen(module_name) == len && !memcmp(module_name, p, len))
++				return true;
++			if (p[len] == ',')
++				len++;
++		}
++	}
++
++	out:
+ 	return false;
+ }
+ core_param(module_blacklist, module_blacklist, charp, 0400);
+-- 
+2.47.3
+
