@@ -1,6 +1,6 @@
-From 52c084c47c7a6983e147c2cb0a9daeeffe1d1771 Mon Sep 17 00:00:00 2001
-From: brokestar233 <3765589194@qq.com>
-Date: Mon, 13 Jul 2026 17:34:48 +0530
+From c739145bfeeb7f2b23e2c20206925b604c91973f Mon Sep 17 00:00:00 2001
+From: fatalcoder524 <11532648+fatalcoder524@users.noreply.github.com>
+Date: Tue, 21 Jul 2026 12:18:07 +0530
 Subject: [PATCH] [HACK]module: Add module intercept and overlay mechanism This
  commit introduces a mechanism to intercept and replace specific kernel
  modules with embedded versions compiled directly into the kernel image. The
@@ -11,7 +11,7 @@ Subject: [PATCH] [HACK]module: Add module intercept and overlay mechanism This
 
 Key components:
 
-1. `kernel/module/module_overlay/`:
+1. `kernel/module_overlay/`:
    - `Makefile`: Builds overlay support objects and generates
      `overlay_files.c` from `.ko` files in `modules/`.
    - `convert_overlay.sh`: Build script that converts `.ko` files into
@@ -23,16 +23,16 @@ Key components:
      `intercept_module_load()` to find and replace module data during
      `load_module()`.
 
-2. `kernel/module/main.c`: Integrates interception logic into
+2. `kernel/module.c`: Integrates interception logic into
    `load_module()` before signature checks and early module validation.
    On match, replaces `info->hdr` with embedded data via `vmalloc()` and
    `memcpy()`, then re-runs `module_sig_check()`.
 
-3. `kernel/module/Makefile`: Adds `module_overlay/` subdirectory to
+3. `kernel/Makefile`: Adds `module_overlay/` subdirectory to
    build.
 
 Usage:
-- Place desired `.ko` files in `kernel/module/module_overlay/modules/`
+- Place desired `.ko` files in `kernel/module_overlay/modules/`
 - Rebuild kernel; matching modules will be automatically embedded
 - Interception is 1:1 by module name (without `.ko`)
 - Success logged via `pr_info("module_overlay: %s replaced...")`
@@ -41,47 +41,47 @@ The implementation is non-intrusive and only activates when a matching
 embedded module is found. No changes to existing module loading paths
 occur otherwise.
 ---
- kernel/module/Makefile                        |   1 +
- kernel/module/main.c                          |  48 +++++++
- kernel/module/module_overlay/Makefile         |  14 ++
- .../module/module_overlay/convert_overlay.sh  | 132 ++++++++++++++++++
- .../module/module_overlay/module_intercept.c  |  83 +++++++++++
- kernel/module/module_overlay/modules/.gitkeep |   0
- kernel/module/module_overlay/overlay_files.h  |  22 +++
- 7 files changed, 300 insertions(+)
- create mode 100644 kernel/module/module_overlay/Makefile
- create mode 100644 kernel/module/module_overlay/convert_overlay.sh
- create mode 100644 kernel/module/module_overlay/module_intercept.c
- create mode 100644 kernel/module/module_overlay/modules/.gitkeep
- create mode 100644 kernel/module/module_overlay/overlay_files.h
+ kernel/Makefile                          |   2 +
+ kernel/module.c                          |  43 ++++++++
+ kernel/module_overlay/Makefile           |  14 +++
+ kernel/module_overlay/convert_overlay.sh | 132 +++++++++++++++++++++++
+ kernel/module_overlay/module_intercept.c |  83 ++++++++++++++
+ kernel/module_overlay/modules/.gitkeep   |   0
+ kernel/module_overlay/overlay_files.h    |  22 ++++
+ 7 files changed, 296 insertions(+)
+ create mode 100644 kernel/module_overlay/Makefile
+ create mode 100644 kernel/module_overlay/convert_overlay.sh
+ create mode 100644 kernel/module_overlay/module_intercept.c
+ create mode 100644 kernel/module_overlay/modules/.gitkeep
+ create mode 100644 kernel/module_overlay/overlay_files.h
 
-diff --git a/kernel/module/Makefile b/kernel/module/Makefile
-index 25fe68e..1758254 100644
---- a/kernel/module/Makefile
-+++ b/kernel/module/Makefile
-@@ -24,6 +24,7 @@ obj-$(CONFIG_KGDB_KDB) += kdb.o
- obj-$(CONFIG_MODVERSIONS) += version.o
- obj-$(CONFIG_MODULE_UNLOAD_TAINT_TRACKING) += tracking.o
- obj-$(CONFIG_MODULE_STATS) += stats.o
-+obj-y += module_overlay/
+diff --git a/kernel/Makefile b/kernel/Makefile
+index 0ddf5ea..5ee4062 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -171,6 +171,8 @@ $(obj)/kheaders_data.tar.xz: FORCE
  
+ clean-files := kheaders_data.tar.xz kheaders.md5
+ 
++obj-y += module_overlay/
++
  #
  # ANDROID: GKI: Generate headerfiles required for gki_module.o
-diff --git a/kernel/module/main.c b/kernel/module/main.c
-index ea1b4e1..48ea233 100644
---- a/kernel/module/main.c
-+++ b/kernel/module/main.c
-@@ -66,6 +66,9 @@
- #undef CREATE_TRACE_POINTS
+ #
+diff --git a/kernel/module.c b/kernel/module.c
+index bcadcef..ec99d18 100644
+--- a/kernel/module.c
++++ b/kernel/module.c
+@@ -67,6 +67,8 @@
  #include <trace/hooks/module.h>
+ #include <trace/hooks/memory.h>
  
 +#include "module_overlay/overlay_files.h"
-+#include <linux/version.h>
 +
- /*
-  * Mutex protects:
-  * 1) List of modules (also safely readable with preempt_disable),
-@@ -2909,6 +2912,51 @@ static int load_module(struct load_info *info, const char __user *uargs,
+ #ifndef ARCH_SHF_SMALL
+ #define ARCH_SHF_SMALL 0
+ #endif
+@@ -4054,6 +4056,47 @@ static int load_module(struct load_info *info, const char __user *uargs,
  	if (err)
  		goto free_copy;
  
@@ -115,11 +115,7 @@ index ea1b4e1..48ea233 100644
 +		}
 +
 +		/* Re-examine the module and cache module information. */
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-+		err = elf_validity_cache_copy(info, flags);
-+#else
 +		err = elf_validity_check(info);
-+#endif
 +		if (err) {
 +			pr_err("Module %s: ELF validity check failed after intercept!\n", name);
 +			goto free_copy;
@@ -130,14 +126,14 @@ index ea1b4e1..48ea233 100644
 +	/*                 END OF MODULE INTERCEPTION                   */
 +	/****************************************************************/
 +
- 	err = early_mod_check(info, flags);
- 	if (err)
- 		goto free_copy;
-diff --git a/kernel/module/module_overlay/Makefile b/kernel/module/module_overlay/Makefile
+ 	/*
+ 	 * Everything checks out, so set up the section info
+ 	 * in the info structure.
+diff --git a/kernel/module_overlay/Makefile b/kernel/module_overlay/Makefile
 new file mode 100644
-index 0000000..ecc8072
+index 0000000..10aa358
 --- /dev/null
-+++ b/kernel/module/module_overlay/Makefile
++++ b/kernel/module_overlay/Makefile
 @@ -0,0 +1,14 @@
 +obj-y += overlay_files.o module_intercept.o
 +extra-y += overlay_files.c
@@ -145,7 +141,7 @@ index 0000000..ecc8072
 +SOURCE_PATH = "$(srctree)/$(src)"
 +
 +quiet_cmd_genoverlay = GEN     $@
-+      cmd_genoverlay = $(srctree)/kernel/module/module_overlay/convert_overlay.sh $@ $(SOURCE_PATH)
++      cmd_genoverlay = $(srctree)/kernel/module_overlay/convert_overlay.sh $@ $(SOURCE_PATH)
 +
 +PHONY += FORCE
 +FORCE:
@@ -154,11 +150,11 @@ index 0000000..ecc8072
 +	$(Q)mkdir -p $(dir $@)
 +	$(call if_changed,genoverlay)
 \ No newline at end of file
-diff --git a/kernel/module/module_overlay/convert_overlay.sh b/kernel/module/module_overlay/convert_overlay.sh
+diff --git a/kernel/module_overlay/convert_overlay.sh b/kernel/module_overlay/convert_overlay.sh
 new file mode 100644
 index 0000000..e135300
 --- /dev/null
-+++ b/kernel/module/module_overlay/convert_overlay.sh
++++ b/kernel/module_overlay/convert_overlay.sh
 @@ -0,0 +1,132 @@
 +#!/bin/bash
 +
@@ -293,18 +289,18 @@ index 0000000..e135300
 +
 +echo "Generated $out_file: $file_idx overlay file(s) processed."
 \ No newline at end of file
-diff --git a/kernel/module/module_overlay/module_intercept.c b/kernel/module/module_overlay/module_intercept.c
+diff --git a/kernel/module_overlay/module_intercept.c b/kernel/module_overlay/module_intercept.c
 new file mode 100644
-index 0000000..1eb33c4
+index 0000000..842db23
 --- /dev/null
-+++ b/kernel/module/module_overlay/module_intercept.c
++++ b/kernel/module_overlay/module_intercept.c
 @@ -0,0 +1,83 @@
 +// SPDX-License-Identifier: GPL-2.0
 +#include <linux/module.h>
 +#include <linux/vmalloc.h>
 +#include <linux/string.h>
 +#include <linux/zstd.h>
-+#include "../internal.h"
++#include "../module-internal.h"
 +#include "overlay_files.h"
 +
 +static const struct overlay_file *find_overlay(const char *name)
@@ -327,7 +323,7 @@ index 0000000..1eb33c4
 +    const struct overlay_file *ov;
 +    void *decompressed_data = NULL;
 +    size_t decompressed_size;
-+    zstd_dctx *dctx = NULL;
++    ZSTD_DCtx *dctx = NULL;
 +    void *workspace = NULL;
 +    size_t workspace_size;
 +
@@ -340,14 +336,14 @@ index 0000000..1eb33c4
 +    info->hdr = NULL;
 +
 +    /* Initialize zstd decompression context */
-+    workspace_size = zstd_dctx_workspace_bound();
++    workspace_size = ZSTD_DCtxWorkspaceBound();
 +    workspace = vzalloc(workspace_size);
 +    if (!workspace) {
 +        pr_err("module_overlay: Failed to allocate workspace for %s\n", name);
 +        return false;
 +    }
 +
-+    dctx = zstd_init_dctx(workspace, workspace_size);
++    dctx = ZSTD_initDCtx(workspace, workspace_size);
 +    if (!dctx) {
 +        pr_err("module_overlay: Failed to initialize dctx for %s\n", name);
 +        vfree(workspace);
@@ -363,8 +359,8 @@ index 0000000..1eb33c4
 +    }
 +
 +    /* 解压缩数据 */
-+    decompressed_size = zstd_decompress_dctx(dctx, decompressed_data, ov->orig_size, ov->data, ov->len);
-+    if (zstd_is_error(decompressed_size)) {
++    decompressed_size = ZSTD_decompressDCtx(dctx, decompressed_data, ov->orig_size, ov->data, ov->len);
++    if (ZSTD_isError(decompressed_size)) {
 +        pr_err("module_overlay: zstd decompress failed for %s: %zu\n", name, decompressed_size);
 +        vfree(decompressed_data);
 +        vfree(workspace);
@@ -382,14 +378,14 @@ index 0000000..1eb33c4
 +
 +    return true;
 +}
-diff --git a/kernel/module/module_overlay/modules/.gitkeep b/kernel/module/module_overlay/modules/.gitkeep
+diff --git a/kernel/module_overlay/modules/.gitkeep b/kernel/module_overlay/modules/.gitkeep
 new file mode 100644
 index 0000000..e69de29
-diff --git a/kernel/module/module_overlay/overlay_files.h b/kernel/module/module_overlay/overlay_files.h
+diff --git a/kernel/module_overlay/overlay_files.h b/kernel/module_overlay/overlay_files.h
 new file mode 100644
 index 0000000..d9f5be9
 --- /dev/null
-+++ b/kernel/module/module_overlay/overlay_files.h
++++ b/kernel/module_overlay/overlay_files.h
 @@ -0,0 +1,22 @@
 +#ifndef __OVERLAY_FILES_H__
 +#define __OVERLAY_FILES_H__
