@@ -365,20 +365,6 @@ index ba49d7bd2b67..dd6b1d58af01 100755
  #define	MAX_SCHEDULE_TIMEOUT		LONG_MAX
  
  extern long schedule_timeout(long timeout);
-@@ -1523,13 +1520,8 @@ struct task_struct {
- 	 */
- 	struct callback_head		l1d_flush_kill;
- #endif
--#ifdef CONFIG_SLIM_SCHED
--	ANDROID_KABI_USE(1, unsigned long sched_prop);
--	ANDROID_KABI_USE(2, struct sched_ext_entity *scx);
--#else
- 	ANDROID_KABI_RESERVE(1);
- 	ANDROID_KABI_RESERVE(2);
--#endif
- 	ANDROID_KABI_RESERVE(3);
- 	ANDROID_KABI_RESERVE(4);
- 	ANDROID_KABI_RESERVE(5);
 @@ -1933,6 +1925,91 @@ static inline int task_nice(const struct task_struct *p)
  	return PRIO_TO_NICE((p)->static_prio);
  }
