@@ -1,0 +1,60 @@
+From 2cb496baeaa7c9f31adac112eca270f56e1f1f07 Mon Sep 17 00:00:00 2001
+From: pershoot <28478728-pershoot@users.noreply.gitlab.com>
+Date: Sun, 21 Jun 2026 10:10:00 -0400
+Subject: [PATCH] kernel_patches: fs/susfs: Implement SuSFS and Toolkit
+ coexistence
+
+-Accommodate:
+ -4/18/26: 'Use static_key in replace of boolean toggle switch' (upstream: susfs: ee6b1970)
+ -4/24/26: 'kernel & KernelSU: Invert initial static_key status; Rename all static_key variables'
+           (upstream: susfs: 5c5c0dd9)
+ -6/21/26: 'kernel & KernelSU: Remove strncpy() from the kernel'
+           (upstream: susfs: e62173ea)
+---
+ kernel_patches/fs/susfs.c | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/kernel_patches/fs/susfs.c b/kernel_patches/fs/susfs.c
+index fb3ff82..bb99b96 100644
+--- a/kernel_patches/fs/susfs.c
++++ b/kernel_patches/fs/susfs.c
+@@ -614,6 +614,7 @@ out_spoof_kstat:
+ #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+ static struct st_susfs_uname my_uname = {0};
+ DEFINE_STATIC_KEY_FALSE(susfs_is_uname_spoof_buffer_set);
++bool is_susfs_uname_set = false;
+ static DEFINE_SEQLOCK(susfs_uname_seqlock);
+ 
+ void susfs_set_uname(void __user **user_info) {
+@@ -632,18 +633,26 @@ void susfs_set_uname(void __user **user_info) {
+ 	write_seqlock(&susfs_uname_seqlock);
+ 	if (!strcmp(info.release, "default")) {
+ 		strscpy(my_uname.release, utsname()->release, __NEW_UTS_LEN);
++		is_susfs_uname_set = false;
+ 	} else {
+ 		strscpy(my_uname.release, info.release, __NEW_UTS_LEN);
++		is_susfs_uname_set = true;
+ 	}
+ 	if (!strcmp(info.version, "default")) {
+ 		strscpy(my_uname.version, utsname()->version, __NEW_UTS_LEN);
+ 	} else {
+ 		strscpy(my_uname.version, info.version, __NEW_UTS_LEN);
++		is_susfs_uname_set = true;
+ 	}
+ 	write_sequnlock(&susfs_uname_seqlock);
+ 
+-	if (!static_key_enabled(&susfs_is_uname_spoof_buffer_set))
+-		static_branch_enable(&susfs_is_uname_spoof_buffer_set);
++	if (is_susfs_uname_set) {
++		if (!static_key_enabled(&susfs_is_uname_spoof_buffer_set))
++			static_branch_enable(&susfs_is_uname_spoof_buffer_set);
++	} else {
++		if (static_key_enabled(&susfs_is_uname_spoof_buffer_set))
++			static_branch_disable(&susfs_is_uname_spoof_buffer_set);
++	}
+ 
+ 	SUSFS_LOGI("set spoofed release: '%s', version: '%s'\n",
+ 				my_uname.release, my_uname.version);
+-- 
+GitLab
+

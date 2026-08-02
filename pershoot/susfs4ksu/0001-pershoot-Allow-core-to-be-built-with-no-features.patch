@@ -1,0 +1,35 @@
+From d13f6ac59c449e137b3e3eadfd7685de762c3f4a Mon Sep 17 00:00:00 2001
+From: pershoot <28478728-pershoot@users.noreply.gitlab.com>
+Date: Mon, 5 Jan 2026 22:01:51 -0500
+Subject: [PATCH] kernel_patches: fs/susfs: Allow core to be built with no
+ features
+
+---
+ kernel_patches/fs/susfs.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/kernel_patches/fs/susfs.c b/kernel_patches/fs/susfs.c
+index 737a217..fb3ff82 100644
+--- a/kernel_patches/fs/susfs.c
++++ b/kernel_patches/fs/susfs.c
+@@ -1153,7 +1153,7 @@ out_copy_to_user:
+ }
+ 
+ /* get susfs enabled features */
+-static int copy_config_to_buf(const char *config_string, char *buf_ptr, size_t *copied_size, size_t bufsize) {
++static __maybe_unused int copy_config_to_buf(const char *config_string, char *buf_ptr, size_t *copied_size, size_t bufsize) {
+ 	size_t tmp_size = strlen(config_string);
+ 
+ 	*copied_size += tmp_size;
+@@ -1168,7 +1168,7 @@ static int copy_config_to_buf(const char *config_string, char *buf_ptr, size_t *
+ void susfs_get_enabled_features(void __user **user_info) {
+ 	struct st_susfs_enabled_features *info = (struct st_susfs_enabled_features *)kzalloc(sizeof(struct st_susfs_enabled_features), GFP_KERNEL);
+ 	char *buf_ptr = NULL;
+-	size_t copied_size = 0;
++	__maybe_unused size_t copied_size = 0;
+ 
+ 	if (!info) {
+ 		info->err = -ENOMEM;
+-- 
+GitLab
+
