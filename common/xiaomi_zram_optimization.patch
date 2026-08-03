@@ -1,0 +1,24 @@
+commit e12cc73bad4c95c19f9491ffebc135e84998d62e
+Author: ztc1997 <dev@ztc1997.com>
+Date:   Sat May 11 07:12:55 2024 +0800
+
+    drivers/block: Import Xiaomi's zram optimization changes
+    
+    - From branch: `bsp-vermeer-t-oss`
+    
+    Change-Id: I9ff6ebb63ad4e92e31d0c559ea0c554ec72c5118
+
+diff --git a/drivers/block/zram/zram_drv.c b/drivers/block/zram/zram_drv.c
+index 0da494afd62b..49e54ad1a0a0 100644
+--- a/drivers/block/zram/zram_drv.c
++++ b/drivers/block/zram/zram_drv.c
+@@ -599,7 +599,7 @@
+ 	if (!parent) {
+ -		bio->bi_opf = REQ_OP_READ;
+ +		bio->bi_opf = REQ_OP_READ | REQ_PRIO;
+ 		bio->bi_end_io = zram_page_end_io;
+ 	} else {
+ -		bio->bi_opf = parent->bi_opf;
+ +		bio->bi_opf = parent->bi_opf | REQ_PRIO;
+ 		bio_chain(bio, parent);
+ 	}

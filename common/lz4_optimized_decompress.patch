@@ -1,0 +1,26 @@
+commit 2ed5bf3ce1cf9c7011802cd6cc10920920caff19
+Author: brokestar233 <3765589194@qq.com>
+Date:   Sat Oct 11 08:05:54 2025 +0800
+
+    lib/decompress_unlz4: Add NEON-optimized LZ4 decompression for ARM64
+    
+    Add support for NEON-optimized LZ4 decompression on ARM64 platforms when CONFIG_KERNEL_MODE_NEON is enabled. This optimization is applied during the decompression of some partitions(e.g., kernel, init_boot), improving performance by leveraging ARM64's NEON SIMD instructions. Fallback to standard LZ4_decompress_safe() when NEON is not available.
+    
+    Signed-off-by: brokestar233 <3765589194@qq.com>
+
+diff --git a/lib/decompress_unlz4.c b/lib/decompress_unlz4.c
+index e6327391b6b6..57bfe602b8c6 100644
+--- a/lib/decompress_unlz4.c
++++ b/lib/decompress_unlz4.c
+@@ -162,7 +162,11 @@ STATIC inline int INIT unlz4(u8 *input, long in_len,
+ #else
+ 		dest_len = uncomp_chunksize;
+ 
++#if defined(CONFIG_ARM64) && defined(CONFIG_KERNEL_MODE_NEON)
++		ret = LZ4_arm64_decompress_safe(inp, outp, chunksize, dest_len, false);
++#else
+ 		ret = LZ4_decompress_safe(inp, outp, chunksize, dest_len);
++#endif
+ 		dest_len = ret;
+ #endif
+ 		if (ret < 0) {
