@@ -1,0 +1,25 @@
+diff -ruN /mnt/external/claudetest-gki-build/patch-workspace/ksu-variants/resukisu/clean/kernel/supercalls.c /mnt/external/claudetest-gki-build/patch-workspace/ksu-variants/resukisu/work/kernel/supercalls.c
+--- a/kernel/supercalls.c	2026-03-02 18:36:41.474740927 +0100
++++ b/kernel/supercalls.c	2026-03-03 19:24:39.884354889 +0100
+@@ -365,7 +365,7 @@
+     ret = ksu_set_app_profile(&cmd.profile);
+     if (!ret) {
+         ksu_persistent_allow_list();
+-#ifdef KSU_TP_HOOK
++#if defined(KSU_TP_HOOK) && defined(CONFIG_KSU_SUSFS)
+         ksu_mark_running_process();
+ #endif
+     }
+@@ -1074,6 +1074,12 @@
+             susfs_add_sus_kstat(arg);
+             return 0;
+         }
++#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT_REDIRECT
++        if (cmd == CMD_SUSFS_ADD_SUS_KSTAT_REDIRECT) {
++            susfs_add_sus_kstat_redirect(arg);
++            return 0;
++        }
++#endif
+ #endif //#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+ #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+         if (cmd == CMD_SUSFS_SET_UNAME) {

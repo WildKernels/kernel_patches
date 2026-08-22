@@ -1,0 +1,16 @@
+diff -ruN clean/kernel/supercalls.c work/kernel/supercalls.c
+--- a/kernel/supercalls.c	2026-03-02 18:37:34.153901650 +0100
++++ b/kernel/supercalls.c	2026-03-03 19:28:53.681580207 +0100
+@@ -992,6 +992,12 @@
+             susfs_add_sus_kstat(arg);
+             return 0;
+         }
++#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT_REDIRECT
++        if (cmd == CMD_SUSFS_ADD_SUS_KSTAT_REDIRECT) {
++            susfs_add_sus_kstat_redirect(arg);
++            return 0;
++        }
++#endif
+ #endif //#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+ #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+         if (cmd == CMD_SUSFS_SET_UNAME) {

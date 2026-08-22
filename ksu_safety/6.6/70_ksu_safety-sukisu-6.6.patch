@@ -1,0 +1,16 @@
+--- a/kernel/supercalls.c
++++ b/kernel/supercalls.c
+@@ -1081,6 +1081,12 @@
+ 		if (cmd == CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY) {
+ 			susfs_add_sus_kstat(arg);
+ 			return 0;
+ 		}
++#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT_REDIRECT
++		if (cmd == CMD_SUSFS_ADD_SUS_KSTAT_REDIRECT) {
++			susfs_add_sus_kstat_redirect(arg);
++			return 0;
++		}
++#endif
+ #endif //#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+ #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+ 		if (cmd == CMD_SUSFS_SET_UNAME) {

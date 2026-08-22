@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OnePlus_KernelSU_SUSFS <builder@kernel.local>
+Date: Fri, 7 Aug 2026 00:00:00 +0000
+Subject: [PATCH] certs: fix undeclared key_pass identifier with OpenSSL 3.0
+
+Guard key_pass usage in certs/extract-cert.c with USE_PKCS11_ENGINE
+and declare key_pass unconditionally to prevent build errors when
+compiling with OpenSSL 3.0 host headers.
+
+---
+ certs/extract-cert.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/certs/extract-cert.c b/certs/extract-cert.c
+index 1234567..89abcdef 100644
+--- a/certs/extract-cert.c
++++ b/certs/extract-cert.c
+@@ -35,6 +35,8 @@
+ #define USE_PKCS11_ENGINE 1
+ #endif
+ 
++static const char *key_pass = NULL;
++
+ #ifdef USE_PKCS11_ENGINE
+ static const char *key_pass;
+ #endif
+@@ -146,8 +148,12 @@ int main(int argc, char **argv)
+ 		}
+ 
++#ifdef USE_PKCS11_ENGINE
+ 		if (key_pass)
+ 			ERR(!ENGINE_ctrl_cmd_string(e, "PIN", key_pass, 0), "Set PKCS#11 PIN");
++#else
++		(void)key_pass;
++#endif
+ 		ENGINE_free(e);
+ 	}
+ 
+-- 

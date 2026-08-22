@@ -1,0 +1,32 @@
+--- a/kernel/supercalls.c
++++ b/kernel/supercalls.c
+@@ -906,13 +906,9 @@
+ 	KSU_IOCTL(SET_SEPOLICY, "SET_SEPOLICY", do_set_sepolicy, only_root),
+ 	KSU_IOCTL(CHECK_SAFEMODE, "CHECK_SAFEMODE", do_check_safemode,
+ 		  always_allow),
+-	KSU_IOCTL(GET_ALLOW_LIST, "GET_ALLOW_LIST", do_get_allow_list,
++	KSU_IOCTL(NEW_GET_ALLOW_LIST, "NEW_GET_ALLOW_LIST", do_new_get_allow_list,
+ 		  manager_or_root),
+-	KSU_IOCTL(GET_DENY_LIST, "GET_DENY_LIST", do_get_deny_list,
+-		  manager_or_root),
+-	KSU_IOCTL(KSU_IOCTL_NEW_GET_ALLOW_LIST, "NEW_GET_ALLOW_LIST", do_new_get_allow_list,
+-		  manager_or_root),
+-	KSU_IOCTL(KSU_IOCTL_NEW_GET_DENY_LIST, "NEW_GET_DENY_LIST", do_new_get_deny_list,
++	KSU_IOCTL(NEW_GET_DENY_LIST, "NEW_GET_DENY_LIST", do_new_get_deny_list,
+ 		  manager_or_root),
+ 	KSU_IOCTL(UID_GRANTED_ROOT, "UID_GRANTED_ROOT", do_uid_granted_root,
+ 		  manager_or_root),
+@@ -1082,6 +1078,12 @@
+ 		if (cmd == CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY) {
+ 			susfs_add_sus_kstat(arg);
+ 			return 0;
+ 		}
++#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT_REDIRECT
++		if (cmd == CMD_SUSFS_ADD_SUS_KSTAT_REDIRECT) {
++			susfs_add_sus_kstat_redirect(arg);
++			return 0;
++		}
++#endif
+ #endif //#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+ #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+ 		if (cmd == CMD_SUSFS_SET_UNAME) {

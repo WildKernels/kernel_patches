@@ -1,0 +1,44 @@
+diff --git a/msm-kernel/build_with_bazel.py b/msm-kernel/build_with_bazel.py
+index 3c1ebc9..7eaaf1c 100644
+--- a/msm-kernel/build_with_bazel.py
++++ b/msm-kernel/build_with_bazel.py
+@@ -137,17 +137,39 @@ class BazelBuilder:
+                     logging.error("cannot specify multiple targets (ALL variants) with one out dir")
+                     sys.exit(1)
+ 
++                # The existing pattern only matches SUFFIX-style build rules,
++                # e.g. --skip abi -> "..._abi_dist". Page-size sibling
++                # platforms (e.g. "sun" + "16k" -> "sun16k") are declared as
++                # a separate define_msm_platforms() target sharing the same
++                # dash-free prefix, and the base query's "{t}[^-]*" already
++                # matches them for that reason -- they don't have "_16k_"
++                # anywhere before "_dist", so the old regex alone can never
++                # exclude them. Add a second, PREFIX-style pattern so
++                # `--skip 16k` (or any other prefix-style sibling name) can
++                # actually filter them out, without changing behaviour for
++                # existing suffix-style skip values like abi/abl.
+                 skip_list_re = [
+                     re.compile(r"//{}:{}[^-]*_.*_{}_dist".format(self.kernel_dir, t, s))
+                     for s in self.skip_list
++                ] + [
++                    re.compile(r"//{}:{}{}_.*_dist".format(self.kernel_dir, t, s))
++                    for s in self.skip_list
+                 ]
+                 query = 'filter("{}[^-]*_.*_dist$", attr(generator_function, define_msm_platforms, {}/...))'.format(
+                     t, self.kernel_dir
+                 )
+             else:
++                # Same reasoning as the ALL branch above: add a prefix-style
++                # match (e.g. "sun16k_perf.*_dist") alongside the existing
++                # suffix-style one (e.g. "sun[^-]*_perf_abi_dist") so a skip
++                # value can exclude either a build-rule suffix or a
++                # dash-free sibling platform prefix.
+                 skip_list_re = [
+                     re.compile(r"//{}:{}[^-]*_{}_{}_dist".format(self.kernel_dir, t, v, s))
+                     for s in self.skip_list
++                ] + [
++                    re.compile(r"//{}:{}{}_{}.*_dist".format(self.kernel_dir, t, s, v))
++                    for s in self.skip_list
+                 ]
+                 query = 'filter("{}[^-]*_{}.*_dist$", attr(generator_function, define_msm_platforms, {}/...))'.format(
+                     t, v, self.kernel_dir
