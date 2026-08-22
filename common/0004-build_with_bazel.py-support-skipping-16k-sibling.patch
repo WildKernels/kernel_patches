@@ -1,7 +1,7 @@
-diff --git a/build_with_bazel.py b/build_with_bazel.py
+diff --git a/msm-kernel/build_with_bazel.py b/msm-kernel/build_with_bazel.py
 index 3c1ebc9..7eaaf1c 100644
---- a/build_with_bazel.py
-+++ b/build_with_bazel.py
+--- a/msm-kernel/build_with_bazel.py
++++ b/msm-kernel/build_with_bazel.py
 @@ -137,17 +137,39 @@ class BazelBuilder:
                      logging.error("cannot specify multiple targets (ALL variants) with one out dir")
                      sys.exit(1)
