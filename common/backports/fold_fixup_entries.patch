@@ -1,0 +1,105 @@
+From 77e90f43f341a385c42eb9d023a30f6939695853 Mon Sep 17 00:00:00 2001
+From: Kalesh Singh <kaleshsingh@google.com>
+Date: Tue, 30 Jul 2024 00:26:29 -0700
+Subject: [PATCH] ANDROID: 16K: [s]maps: Fold fixup entries into the parent
+ entry
+
+In x86_64 16kb emulation mode the kernel will insert anonymous VMAs
+at the end of filebacked of shmem mappings that are larger than the
+backing file. This is done inorder to avoid invalid file faults.
+
+The smaps/maps entries for fixup VMAs are currently hidden from
+userspace to prevent processes performing syscalls on non-page
+aligned addresses by scanning /proc/<pid>/[s]maps. However the end
+of the original VMA is left as a non-16kB aligned address.
+
+Fold the extend of the fixup VMA into the parent (preceding VMA).
+This hides fixup VMA completely from userspace and any operations
+performed with addresses from maps or smaps will be done on the
+orignal range.
+
+Before:
+
+74b028b48000-74b028b49000 r--p 00000000 00:12 1441    /dev/test.so
+74b028b4c000-74b028b50000 rw-p 00000000 00:00 0       [anon:Test mapping]
+
+The unaligned gap [74b028b49000-74b028b4c000] between the 2 test
+mappings is where the anon fixup was inserted.
+
+After:
+
+74b028b48000-74b028b4c000 r--p 00000000 00:12 1441    /dev/test.so
+74b028b4c000-74b028b50000 rw-p 00000000 00:00 0       [anon:Test mapping]
+
+There is no visible gap and the fixup mapping is now transparent to
+userpsace.
+
+Bug: 328777915
+Bug: 331683943
+Change-Id: Ibe2fe630695d875a8d7798f235adcf277b16bd9c
+Signed-off-by: Kalesh Singh <kaleshsingh@google.com>
+---
+ fs/proc/task_mmu.c               |  4 +---
+ include/linux/page_size_compat.h |  1 +
+ mm/page_size_compat.c            | 26 ++++++++++++++++++++++++++
+ 3 files changed, 28 insertions(+), 3 deletions(-)
+
+diff --git a/fs/proc/task_mmu.c b/fs/proc/task_mmu.c
+index ec1db2b2b10c9..d74b87ab462ac 100644
+--- a/fs/proc/task_mmu.c
++++ b/fs/proc/task_mmu.c
+@@ -283,9 +283,7 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
+ 	start = vma->vm_start;
+ 	end = vma->vm_end;
+ 
+-	/* Skip page size fixup VMAs */
+-	if (flags & __VM_NO_COMPAT)
+-		return;
++	__fold_filemap_fixup_entry(&((struct proc_maps_private *)m->private)->iter, &end);
+ 
+ 	show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino);
+ 	if (mm)
+diff --git a/include/linux/page_size_compat.h b/include/linux/page_size_compat.h
+index ee5901e56505a..9d59414086a59 100644
+--- a/include/linux/page_size_compat.h
++++ b/include/linux/page_size_compat.h
+@@ -155,4 +155,5 @@ static __always_inline void __filemap_fixup(unsigned long addr, unsigned long pr
+ 		___filemap_fixup(addr, prot, old_len, new_len);
+ }
+ 
++extern void __fold_filemap_fixup_entry(struct vma_iterator *iter, unsigned long *end);
+ #endif /* __LINUX_PAGE_SIZE_COMPAT_H */
+diff --git a/mm/page_size_compat.c b/mm/page_size_compat.c
+index f7b60d6bd0cf6..be1ae972b15a4 100644
+--- a/mm/page_size_compat.c
++++ b/mm/page_size_compat.c
+@@ -176,3 +176,29 @@ void ___filemap_fixup(unsigned long addr, unsigned long prot, unsigned long old_
+ 					MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED|__MAP_NO_COMPAT,
+ 					0, 0, &populate, NULL);
+ }
++
++/*
++ * Folds any anon fixup entries created by ___filemap_fixup()
++ * into the previous mapping so that /proc/<pid>/[s]maps don't
++ * show unaliged entries.
++ */
++void __fold_filemap_fixup_entry(struct vma_iterator *iter, unsigned long *end)
++{
++	struct vm_area_struct *next_vma;
++
++	/* Not emulating page size? */
++	if (!static_branch_unlikely(&page_shift_compat_enabled))
++		return;
++
++	/* Advance iterator */
++	next_vma = vma_next(iter);
++
++	/* If fixup VMA, adjust the end to cover its extent */
++	if (next_vma && (next_vma->vm_flags & __VM_NO_COMPAT)) {
++		*end = next_vma->vm_end;
++		return;
++	}
++
++	/* Rewind iterator */
++	vma_prev(iter);
++}

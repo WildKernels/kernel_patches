@@ -83,19 +83,10 @@ index 1b34903f..390a9146 100644
  				      struct context *tcontext,
  				      u16 tclass,
 diff --git a/kernel/runtime/boot_event.c b/kernel/runtime/boot_event.c
-index 23daaa66..99dcb7dd 100644
+index 23daaa66..4b694bf1 100644
 --- a/kernel/runtime/boot_event.c
 +++ b/kernel/runtime/boot_event.c
-@@ -15,8 +15,6 @@ bool ksu_module_mounted __read_mostly = false;
- bool ksu_boot_completed __read_mostly = false;
- extern struct static_key_true ksu_is_input_hook_enabled;
- 
--extern void ksu_avc_spoof_late_init(void);
--
- void on_post_fs_data(void)
- {
-     static bool done = false;
-@@ -74,5 +72,4 @@ void on_boot_completed(void)
+@@ -74,5 +74,4 @@ void on_boot_completed(void)
      pr_info("on_boot_completed!\n");
      track_throne(true);
      ksu_selinux_hide_drop_backup_if_unused();

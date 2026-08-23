@@ -1,37 +1,36 @@
 diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
-index 4ad8e056..a4e3152d 100644
+index 68fe8134..5944c950 100644
 --- a/kernel/feature/sucompat.c
 +++ b/kernel/feature/sucompat.c
-@@ -199,7 +199,7 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
-     pr_info("ksu_handle_execveat_sucompat: su found\n");
+@@ -202,6 +202,7 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
  
      memcpy((void *)filename->name, ksud_path, sizeof(ksud_path));
--
-+	ksu_compat_sulog('x');
+ 
++    ksu_compat_sulog('x');
      pending_sucompat = ksu_sulog_capture_sucompat(filename->name, (struct user_arg_ptr*)argv_user, GFP_KERNEL);
  
      ret = escape_with_root_profile();
-@@ -240,6 +240,7 @@ int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
+@@ -242,6 +243,7 @@ int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
              pr_err("ksu_handle_faccessat: su found but NOT allowed! Because current process is running in chrooted environment\n");
              return 0;
          }
-+		ksu_compat_sulog('a');
++        ksu_compat_sulog('a');
          pr_info("ksu_handle_faccessat: su->sh!\n");
          *filename_user = sh_user_path();
  	}
-@@ -260,6 +261,7 @@ int ksu_handle_stat(int *dfd, struct filename **filename, int *flags) {
+@@ -262,6 +264,7 @@ int ksu_handle_stat(int *dfd, struct filename **filename, int *flags) {
          pr_err("ksu_handle_stat: su found but NOT allowed! Because current process is running in chrooted environment\n");
          return 0;
  	}
-+	ksu_compat_sulog('s');
++    ksu_compat_sulog('s');
      pr_info("ksu_handle_stat: su->sh!\n");
      memcpy((void *)((*filename)->name), sh_path, sizeof(sh_path));
      return 0;
-@@ -280,6 +282,7 @@ int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags)
+@@ -282,6 +285,7 @@ int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags)
              pr_err("ksu_handle_stat: su found but NOT allowed! Because current process is running in chrooted environment\n");
              return 0;
          }
-+		ksu_compat_sulog('s');
++        ksu_compat_sulog('s');
          pr_info("ksu_handle_stat: su->sh!\n");
          *filename_user = sh_user_path();
  	}
