@@ -2695,17 +2695,16 @@ index 330aa539b..000000000
 diff --git a/fs/incfs/data_mgmt.c b/fs/incfs/data_mgmt.c
 --- a/fs/incfs/data_mgmt.c
 +++ b/fs/incfs/data_mgmt.c
-@@ -472,8 +472,11 @@ static ssize_t decompress(struct mount_info *mi,
- 
+@@ -472,7 +472,12 @@ static ssize_t decompress(struct mount_info *mi,
  	switch (alg) {
  	case INCFS_BLOCK_COMPRESSED_LZ4:
--		result = LZ4_decompress_safe(src.data, dst.data, src.len,
--					     dst.len);
 +#if defined(CONFIG_ARM64) && defined(CONFIG_KERNEL_MODE_NEON)
-+	result = LZ4_arm64_decompress_safe(src.data, dst.data, src.len, dst.len, false);
++		result = LZ4_arm64_decompress_safe(src.data, dst.data,
++						   src.len, dst.len, false);
 +#else
-+	result = LZ4_decompress_safe(src.data, dst.data, src.len, dst.len);
+ 		result = LZ4_decompress_safe(src.data, dst.data, src.len,
+ 					     dst.len);
 +#endif
- 		break;
- 	case INCFS_BLOCK_COMPRESSED_LZ4HC:
- 		result = LZ4HC_decompress_safe(src.data, dst.data, src.len,
+ 		if (result < 0)
+ 			return -EBADMSG;
+ 		return result;
