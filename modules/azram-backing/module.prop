@@ -1,0 +1,6 @@
+id=azram-backing
+name=ZRAM Backing (hybridswap)
+version=v1.0
+versionCode=1
+author=GuLingguang
+description=Boot-time zram backing device setup (hybridswap partition). Runs before Scene's swap controller; zram size and writeback scheduling belong to Scene.

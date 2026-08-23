@@ -1,0 +1,627 @@
+diff --git a/kernel/Makefile b/kernel/Makefile
+index cf521707..3c617bcc 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -26,4 +26,14 @@ format:
+ check-format:
+ 	find . \( -name "*.c" -o -name "*.h" \) -print0 | xargs -0 clang-format --dry-run --Werror
+ 
++## For susfs stuff ##
++ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
++$(eval SUSFS_VERSION=$(shell cat $(srctree)/include/linux/susfs.h | grep -E '^#define SUSFS_VERSION' | cut -d' ' -f3 | sed 's/"//g'))
++$(info )
++$(info -- SUSFS_VERSION: $(SUSFS_VERSION))
++else
++$(info -- You have not integrated susfs in your kernel yet.)
++$(info -- Read: https://gitlab.com/simonpunk/susfs4ksu)
++endif
++
+ # Keep a new line here!! Because someone may append config
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+index f028deb9..9e02d0d9 100644
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -7,10 +7,7 @@
+ #include <generated/compile.h>
+ #include <linux/version.h> /* LINUX_VERSION_CODE, KERNEL_VERSION macros */
+ #include <linux/moduleparam.h>
+-
+-#ifdef CONFIG_KSU_SUSFS
+ #include <linux/susfs.h>
+-#endif
+ #include <linux/sched.h>
+ 
+ #include "policy/allowlist.h"
+@@ -129,6 +126,7 @@ static inline void __exit ksu_hook_exit(void)
+ #endif
+ 
+ #if defined(CONFIG_KSU_TRACEPOINT_HOOK)
++
+     ksu_syscall_hook_manager_exit();
+ #else
+     ksu_sucompat_exit();
+diff --git a/kernel/feature/adb_root.c b/kernel/feature/adb_root.c
+index 1fd8dc66..65783c75 100644
+--- a/kernel/feature/adb_root.c
++++ b/kernel/feature/adb_root.c
+@@ -8,9 +8,12 @@
+ #include <linux/ptrace.h>
+ #include <linux/static_key.h>
+ #include <linux/slab.h>
++#include <linux/sched/task_stack.h>
++#include <linux/susfs_def.h>
+ 
+ #include "adb_root.h"
+ #include "arch.h"
++#include "policy/app_profile.h"
+ #include "policy/feature.h"
+ #include "selinux/selinux.h"
+ #ifndef CONFIG_KSU_TRACEPOINT_HOOK
+diff --git a/kernel/hook/setuid_hook.c b/kernel/hook/setuid_hook.c
+index 43f7ce46..cf9d7be9 100644
+--- a/kernel/hook/setuid_hook.c
++++ b/kernel/hook/setuid_hook.c
+@@ -11,6 +11,8 @@
+ #include <linux/string.h>
+ #include <linux/types.h>
+ #include <linux/uaccess.h>
++#include <linux/susfs_def.h>
++#include "selinux/selinux.h"
+ #include <linux/uidgid.h>
+ #include <linux/namei.h>
+ 
+diff --git a/kernel/include/ksu.h b/kernel/include/ksu.h
+index fc62f9f9..e699e355 100644
+--- a/kernel/include/ksu.h
++++ b/kernel/include/ksu.h
+@@ -8,8 +8,8 @@
+ #define KERNEL_SU_VERSION KSU_VERSION
+ #define KERNEL_SU_OPTION 0xDEADBEEF
+ 
+-extern struct cred *ksu_cred;
+ extern bool ksu_late_loaded;
++extern struct cred *ksu_cred;
+ extern bool allow_shell;
+ extern bool ksu_no_custom_rc;
+ 
+diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
+index 6f424762..e2036e4b 100644
+--- a/kernel/policy/app_profile.c
++++ b/kernel/policy/app_profile.c
+@@ -29,7 +29,6 @@
+ #include "selinux/selinux.h"
+ #include "infra/su_mount_ns.h"
+ #ifdef CONFIG_KSU_TRACEPOINT_HOOK
+-#include "hook/tp_marker.h"
+ #endif
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
+@@ -140,8 +139,6 @@ int escape_with_root_profile(void)
+     int ret = 0;
+     struct cred *cred;
+     // a bit useless, but we just want less ifdefs
+-    struct task_struct *p = current;
+-    struct task_struct *t;
+     struct root_profile *profile = NULL;
+     struct user_struct *new_user;
+ 
+@@ -245,14 +242,16 @@ out_abort_creds:
+     return ret;
+ }
+ 
+-void escape_to_root_for_init(void)
++int escape_to_root_for_init(void)
+ {
+     struct cred *cred = prepare_creds();
+     if (!cred) {
+         pr_err("Failed to prepare init's creds!\n");
+-        return;
++        return -EINVAL;
+     }
+ 
+     setup_selinux(KERNEL_SU_CONTEXT, cred);
+     commit_creds(cred);
++
++    return 0;
+ }
+diff --git a/kernel/policy/app_profile.h b/kernel/policy/app_profile.h
+index b4babf39..ab3fe7f4 100644
+--- a/kernel/policy/app_profile.h
++++ b/kernel/policy/app_profile.h
+@@ -13,6 +13,6 @@
+ int escape_with_root_profile(void);
+ 
+ void disable_seccomp(void);
+-void escape_to_root_for_init(void);
++int escape_to_root_for_init(void);
+ 
+ #endif
+diff --git a/kernel/policy/feature.h b/kernel/policy/feature.h
+index 8f775996..958bf3d6 100644
+--- a/kernel/policy/feature.h
++++ b/kernel/policy/feature.h
+@@ -2,7 +2,7 @@
+ #define __KSU_H_FEATURE
+ 
+ #include <linux/types.h>
+-#include "uapi/feature.h" // IWYU pragma: keep
++#include "uapi/feature.h"
+ 
+ typedef int (*ksu_feature_get_t)(u64 *value);
+ typedef int (*ksu_feature_set_t)(u64 value);
+diff --git a/kernel/runtime/boot_event.c b/kernel/runtime/boot_event.c
+index acc6356c..480aaf9d 100644
+--- a/kernel/runtime/boot_event.c
++++ b/kernel/runtime/boot_event.c
+@@ -14,6 +14,7 @@
+ 
+ bool ksu_module_mounted __read_mostly = false;
+ bool ksu_boot_completed __read_mostly = false;
++extern struct static_key_true ksu_is_input_hook_enabled;
+ 
+ void on_post_fs_data(void)
+ {
+@@ -28,7 +29,10 @@ void on_post_fs_data(void)
+     ksu_load_allow_list();
+     ksu_observer_init();
+     // sanity check, this may influence the performance
+-    ksu_stop_input_hook_runtime();
++    if (static_key_enabled(&ksu_is_input_hook_enabled)) {
++        static_branch_disable(&ksu_is_input_hook_enabled);
++        pr_info("ksu_input_hook is disabled\n");
++    }
+     ksu_selinux_hide_handle_post_fs_data();
+ 
+     // scan manager
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+index 0bf3c695..0cb4c2b1 100644
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -21,7 +21,6 @@
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0)
+ #include <linux/aio.h>
+ #endif
+-#include <linux/kprobes.h>
+ #include <linux/printk.h>
+ #include <linux/types.h>
+ #include <linux/uaccess.h>
+@@ -591,7 +590,7 @@ static bool is_init_rc(struct file *fp)
+     return true;
+ }
+ 
+-#ifdef CONFIG_KSU_MANUAL_HOOK
++#if defined(CONFIG_KSU_MANUAL_HOOK) || defined(CONFIG_KSU_SUSFS)
+ 
+ // NOTE: https://github.com/tiann/KernelSU/commit/df640917d11dd0eff1b34ea53ec3c0dc49667002
+ // - added 260110, seems needed for A16 QPR 3
+@@ -802,7 +801,10 @@ int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code, int *v
+             // key pressed, count it
+             volumedown_pressed_count += 1;
+             if (is_volumedown_enough(volumedown_pressed_count)) {
+-                ksu_stop_input_hook_runtime();
++                if (static_key_enabled(&ksu_is_input_hook_enabled)) {
++                    static_branch_disable(&ksu_is_input_hook_enabled);
++                    pr_info("ksu_input_hook is disabled\n");
++                }
+             }
+         }
+     }
+@@ -935,7 +937,10 @@ bool ksu_is_safe_mode()
+     }
+ 
+     // stop hook first!
+-    ksu_stop_input_hook_runtime();
++    if (static_key_enabled(&ksu_is_input_hook_enabled)) {
++        static_branch_disable(&ksu_is_input_hook_enabled);
++        pr_info("ksu_input_hook is disabled\n");
++    }
+ 
+     pr_info("volumedown_pressed_count: %d\n", volumedown_pressed_count);
+     if (is_volumedown_enough(volumedown_pressed_count)) {
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+index 32693303..0f329d5a 100644
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -315,6 +315,8 @@ void apply_kernelsu_rules()
+     ksu_destroy_sepolicy(old_pol);
+ 
+     reset_avc_cache();
++
++    susfs_set_batch_sid();
+ out_unlock:
+     mutex_unlock(&selinux_state.policy_mutex);
+ #else
+diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
+index 8cfd6019..b0a78bc1 100644
+--- a/kernel/selinux/selinux.c
++++ b/kernel/selinux/selinux.c
+@@ -7,6 +7,13 @@
+ #include "ksu.h"
+ #include "compat/kernel_compat.h"
+ 
++#ifdef CONFIG_KSU_SUSFS
++#define KERNEL_PRIV_APP_DOMAIN "u:r:priv_app:s0:c512,c768"
++extern u32 susfs_priv_app_sid __read_mostly;
++extern u32 susfs_ksu_sid __read_mostly;
++#endif
++
++
+ /*
+  * Cached SID values for frequently checked contexts.
+  * These are resolved once at init and used for fast u32 comparison
+@@ -114,12 +121,6 @@ static void __security_release_secctx(struct lsm_context *cp)
+ #define __security_release_secctx security_release_secctx
+ #endif
+ 
+-#ifdef CONFIG_KSU_SUSFS
+-#define KERNEL_PRIV_APP_DOMAIN "u:r:priv_app:s0:c512,c768"
+-u32 susfs_priv_app_sid = 0; // compatible with simonpunk, why he don't use sid cache???
+-u32 susfs_ksu_sid = 0;
+-#endif
+-
+ /*
+  * Initialize cached SID values for frequently checked SELinux contexts.
+  * Called once after SELinux policy is loaded (post-fs-data).
+@@ -242,19 +243,72 @@ bool is_init(const struct cred *cred)
+     return is_sid_match(cred, cached_init_sid, INIT_CONTEXT);
+ }
+ 
+-#ifdef CONFIG_KSU_SUSFS
+-#define KERNEL_PRIV_APP_DOMAIN "u:r:priv_app:s0:c512,c768"
++void escape_to_root_for_adb_root(void)
++{
++    struct cred *cred = prepare_creds();
++    if (!cred) {
++        pr_err("Failed to prepare adbd's creds!\n");
++        return;
++    }
++
++    if (transive_to_domain(KERNEL_SU_CONTEXT, cred, true)) {
++        pr_err("transive domain failed.\n");
++        abort_creds(cred);
++        return;
++    }
++    commit_creds(cred);
++}
++
++#define KERNEL_INIT_DOMAIN "u:r:init:s0"
++#define KERNEL_ZYGOTE_DOMAIN "u:r:zygote:s0"
++
++u32 susfs_ksu_sid __read_mostly = 0;
++u32 susfs_init_sid __read_mostly = 0;
++u32 susfs_zygote_sid __read_mostly = 0;
++u32 susfs_priv_app_sid __read_mostly = 0;
++
++static inline void susfs_set_sid(const char *secctx_name, u32 *out_sid)
++{
++    int err;
++    
++    if (!secctx_name || !out_sid) {
++        pr_err("secctx_name || out_sid is NULL\n");
++        return;
++    }
++
++    err = security_secctx_to_secid(secctx_name, strlen(secctx_name),
++                       out_sid);
++    if (err) {
++        pr_err("failed setting sid for '%s', err: %d\n", secctx_name, err);
++        return;
++    }
++    pr_info("sid '%u' is set for secctx_name '%s'\n", *out_sid, secctx_name);
++}
++
++bool susfs_is_sid_equal(const struct cred *cred, u32 sid2) {
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
++    const struct task_security_struct *tsec = selinux_cred(cred);
++#else
++    const struct cred_security_struct *tsec = selinux_cred(cred);
++#endif
++
++    if (!tsec) {
++        return false;
++    }
++    return tsec->sid == sid2;
++}
+ 
+ u32 susfs_get_sid_from_name(const char *secctx_name)
+ {
+     u32 out_sid = 0;
+     int err;
+-
++    
+     if (!secctx_name) {
+         pr_err("secctx_name is NULL\n");
+         return 0;
+     }
+-    err = security_secctx_to_secid(secctx_name, strlen(secctx_name), &out_sid);
++    err = security_secctx_to_secid(secctx_name, strlen(secctx_name),
++                       &out_sid);
+     if (err) {
+         pr_err("failed getting sid from secctx_name: %s, err: %d\n", secctx_name, err);
+         return 0;
+@@ -262,39 +316,26 @@ u32 susfs_get_sid_from_name(const char *secctx_name)
+     return out_sid;
+ }
+ 
+-u32 susfs_get_current_sid(void)
+-{
++u32 susfs_get_current_sid(void) {
+     return current_sid();
+ }
+ 
+-bool susfs_is_current_zygote_domain(void)
+-{
+-    return is_zygote(current_cred());
++bool susfs_is_current_zygote_domain(void) {
++    return unlikely(current_sid() == susfs_zygote_sid);
+ }
+ 
+-bool susfs_is_current_ksu_domain(void)
+-{
+-    return is_ksu_domain();
++bool susfs_is_current_ksu_domain(void) {
++    return unlikely(current_sid() == susfs_ksu_sid);
+ }
+ 
+-bool susfs_is_current_init_domain(void)
+-{
+-    return is_init(current_cred());
++bool susfs_is_current_init_domain(void) {
++    return unlikely(current_sid() == susfs_init_sid);
+ }
+-#endif // #ifdef CONFIG_KSU_SUSFS
+ 
+-void escape_to_root_for_adb_root(void)
++void susfs_set_batch_sid(void)
+ {
+-    struct cred *cred = prepare_creds();
+-    if (!cred) {
+-        pr_err("Failed to prepare adbd's creds!\n");
+-        return;
+-    }
+-
+-    if (transive_to_domain(KERNEL_SU_CONTEXT, cred, true)) {
+-        pr_err("transive domain failed.\n");
+-        abort_creds(cred);
+-        return;
+-    }
+-    commit_creds(cred);
++    susfs_set_sid(KERNEL_ZYGOTE_DOMAIN, &susfs_zygote_sid);
++    susfs_set_sid(KERNEL_SU_CONTEXT, &susfs_ksu_sid);
++    susfs_set_sid(KERNEL_INIT_DOMAIN, &susfs_init_sid);
++    susfs_set_sid(KERNEL_PRIV_APP_DOMAIN, &susfs_priv_app_sid);
+ }
+diff --git a/kernel/selinux/selinux.h b/kernel/selinux/selinux.h
+index 73b907cb..53faf5d8 100644
+--- a/kernel/selinux/selinux.h
++++ b/kernel/selinux/selinux.h
+@@ -59,4 +59,12 @@ extern u32 ksu_file_sid;
+ 
+ void __init ksu_selinux_init();
+ 
++bool susfs_is_sid_equal(const struct cred *cred, u32 sid2);
++u32 susfs_get_sid_from_name(const char *secctx_name);
++u32 susfs_get_current_sid(void);
++void susfs_set_batch_sid(void);
++bool susfs_is_current_zygote_domain(void);
++bool susfs_is_current_ksu_domain(void);
++bool susfs_is_current_init_domain(void);
++
+ #endif
+diff --git a/kernel/sulog/event.h b/kernel/sulog/event.h
+index 99000feb..d275d7da 100644
+--- a/kernel/sulog/event.h
++++ b/kernel/sulog/event.h
+@@ -5,6 +5,7 @@
+ #include <linux/compiler_types.h>
+ #endif
+ #include <linux/gfp.h>
++#include "runtime/ksud.h"
+ #include <linux/types.h>
+ #include "uapi/sulog.h" // IWYU pragma: keep
+ #include "runtime/ksud.h" // declare user_arg_ptr
+diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
+index 242b5711..caa967ac 100644
+--- a/kernel/supercall/dispatch.c
++++ b/kernel/supercall/dispatch.c
+@@ -10,6 +10,8 @@
+ #endif
+ 
+ #include <linux/thread_info.h>
++#include <linux/namei.h>
++#include <linux/susfs.h>
+ #include "uapi/supercall.h"
+ #include "supercall/internal.h"
+ #include "arch.h"
+@@ -23,7 +25,6 @@
+ #include "selinux/selinux.h"
+ #include "infra/file_wrapper.h"
+ #ifdef CONFIG_KSU_TRACEPOINT_HOOK
+-#include "hook/tp_marker.h"
+ #endif
+ #include "feature/dynamic_manager.h"
+ #include "policy/app_profile.h"
+@@ -143,12 +144,8 @@ static int do_report_event(void __user *arg)
+         static bool post_fs_data_lock = false;
+         if (!post_fs_data_lock) {
+             post_fs_data_lock = true;
+-            if (ksu_late_loaded) {
+-                pr_info("post-fs-data skipped (late load)\n");
+-            } else {
+-                pr_info("post-fs-data triggered\n");
+-                on_post_fs_data();
+-            }
++            pr_info("post-fs-data triggered\n");
++            on_post_fs_data();
+         }
+         break;
+     }
+@@ -418,7 +415,6 @@ static int do_set_app_profile(void __user *arg)
+     if (!ret) {
+         ksu_persistent_allow_list();
+ #ifdef CONFIG_KSU_TRACEPOINT_HOOK
+-        ksu_mark_running_process();
+ #endif
+     }
+ 
+@@ -589,6 +585,97 @@ static int do_manage_mark(void __user *arg)
+     return 0;
+ }
+ 
++int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg)
++{
++    if (magic1 != KSU_INSTALL_MAGIC1) {
++        return -EINVAL; 
++    }
++
++    // If magic2 is susfs and current process is root
++    if (magic2 == SUSFS_MAGIC && current_uid().val == 0) {
++        switch(cmd) {
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++            case CMD_SUSFS_ADD_SUS_PATH:
++                susfs_add_sus_path(arg);
++                return 0;
++            case CMD_SUSFS_ADD_SUS_PATH_LOOP:
++                susfs_add_sus_path_loop(arg);
++                return 0;
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
++#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
++            case CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS:
++                susfs_set_hide_sus_mnts_for_non_su_procs(arg);
++                return 0;
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
++#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
++            case CMD_SUSFS_ADD_SUS_KSTAT:
++                susfs_add_sus_kstat(arg);
++                return 0;
++            case CMD_SUSFS_UPDATE_SUS_KSTAT:
++                susfs_update_sus_kstat(arg);
++                return 0;
++            case CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY:
++                susfs_add_sus_kstat(arg);
++                return 0;
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
++#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
++            case CMD_SUSFS_SET_UNAME:
++                susfs_set_uname(arg);
++                return 0;
++#endif // #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
++#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
++            case CMD_SUSFS_ENABLE_LOG:
++                susfs_enable_log(arg);
++                return 0;
++#endif // #ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
++#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
++            case CMD_SUSFS_SET_CMDLINE_OR_BOOTCONFIG:
++                susfs_set_cmdline_or_bootconfig(arg);
++                return 0;
++#endif // #ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
++#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
++            case CMD_SUSFS_ADD_OPEN_REDIRECT:
++                susfs_add_open_redirect(arg);
++                return 0;
++#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++            case CMD_SUSFS_ADD_SUS_MAP:
++                susfs_add_sus_map(arg);
++                return 0;
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
++            case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING:
++                susfs_set_avc_log_spoofing(arg);
++                return 0;
++            case CMD_SUSFS_SHOW_ENABLED_FEATURES:
++                susfs_get_enabled_features(arg);
++                return 0;
++            case CMD_SUSFS_SHOW_VARIANT:
++                susfs_show_variant(arg);
++                return 0;
++            case CMD_SUSFS_SHOW_VERSION:
++                susfs_show_version(arg);
++                return 0;
++            default:
++                return -EINVAL;
++        }
++    }
++
++    if (magic2 == KSU_INSTALL_MAGIC2)
++        return ksu_supercall_reboot_handler(arg);
++
++#ifdef CONFIG_KSU_TOOLKIT_SUPPORT
++    // other sys_reboot extensions are fully require uid 0,
++    // so let's check it before
++    if (ksu_get_uid_t(current_uid()) != 0)
++        return -EINVAL;
++
++    if (ksu_try_handle_toolkit_cmd(magic2, cmd, arg))
++        return 0;
++#endif
++
++    return -EINVAL;
++}
++
+ static int do_nuke_ext4_sysfs(void __user *arg)
+ {
+     struct ksu_nuke_ext4_sysfs_cmd cmd;
+diff --git a/kernel/supercall/supercall.c b/kernel/supercall/supercall.c
+index 5a59d614..14b07064 100644
+--- a/kernel/supercall/supercall.c
++++ b/kernel/supercall/supercall.c
+@@ -87,44 +87,9 @@ extern int ksu_try_handle_toolkit_cmd(int magic2, unsigned int cmd, void __user
+ extern int ksu_handle_susfs_cmd(unsigned int cmd, void __user **arg);
+ #endif
+ 
+-// downstream: make sure to pass arg as reference, this can allow us to extend things.
+-int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg)
++int ksu_supercall_reboot_handler(void __user **arg)
+ {
+-    if (magic1 != KSU_INSTALL_MAGIC1)
+-        return -EINVAL;
+-
+-#ifdef CONFIG_KSU_DEBUG
+-    pr_info("sys_reboot: intercepted call! magic: 0x%x id: %d\n", magic1, magic2);
+-#endif
+-
+-    // Check if this is a request to install KSU fd
+-    if (magic2 == KSU_INSTALL_MAGIC2) {
+-        ksu_install_fd_to_user((int __user *)*arg);
+-        return 0;
+-    }
+-
+-    // extensions
+-
+-#if !defined(CONFIG_KSU_TOOLKIT_SUPPORT) && !defined(CONFIG_KSU_SUSFS)
+-    return 0;
+-#endif
+-
+-    // other sys_reboot extensions are fully require uid 0,
+-    // so let's check it before
+-    if (ksu_get_uid_t(current_uid()) != 0)
+-        return 0;
+-
+-#ifdef CONFIG_KSU_TOOLKIT_SUPPORT
+-    if (ksu_try_handle_toolkit_cmd(magic2, cmd, arg))
+-        return 0;
+-#endif
+-
+-#ifdef CONFIG_KSU_SUSFS
+-    // If magic2 is susfs and current process is root
+-    if (magic2 == SUSFS_MAGIC) {
+-        return ksu_handle_susfs_cmd(cmd, arg);
+-    }
+-#endif
++    ksu_install_fd_to_user((int __user *)*arg);
+     return 0;
+ }
+ 
+diff --git a/kernel/supercall/supercall.h b/kernel/supercall/supercall.h
+index fbedd11f..483e5069 100644
+--- a/kernel/supercall/supercall.h
++++ b/kernel/supercall/supercall.h
+@@ -18,6 +18,7 @@ struct ksu_ioctl_cmd_map {
+ 
+ // Install KSU fd to current process
+ int ksu_install_fd(void);
++int ksu_supercall_reboot_handler(void __user **arg);
+ 
+ void ksu_supercalls_init(void);
+ void ksu_supercalls_exit(void);

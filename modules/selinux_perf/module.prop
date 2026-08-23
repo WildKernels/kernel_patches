@@ -1,0 +1,6 @@
+id=selinux_perf
+name=SELinux Perf Allow
+description=Allow vendor_hal_perf_default to scan /proc (ksu/kernel domains)
+version=1.0
+versionCode=1
+author=GuLingguang

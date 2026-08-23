@@ -1,0 +1,194 @@
+From: Knockout Kernels <build@localhost>
+Date: Tue, 11 Aug 2026 00:00:00 +0000
+Subject: [PATCH] gki_defconfig: strip debug/instrumentation/kunit-test
+ configs for performance builds
+
+Disables kernel-side debug and test instrumentation that has a real
+runtime cost on a production device: KASAN, UBSAN, KFENCE, page
+owner/pinner tracking, memory-init poisoning, schedstats, ftrace hist
+triggers, PM debug hooks, CMA debugfs stats, CONTEXTIDR PID tracing,
+softlockup/workqueue watchdogs, and the KUNIT test modules scattered
+through the tree (they build as modules and don't autoload, but this
+keeps them out of the module list entirely).
+
+Left untouched on purpose:
+  - CONFIG_DEBUG_INFO_BTF / DWARF5 / compressed — build-time only,
+    zero runtime cost, and build_kernel() in build.sh checks for BTF
+    being enabled and warns if pahole can't produce it.
+  - CONFIG_ANDROID_VENDOR_HOOKS, TASKSTATS/TASK_*ACCT — required by
+    vendor modules and Android battery/procstats respectively; not
+    "debug" in the perf sense.
+
+Since ABI/KMI protected-exports enforcement is already stripped by
+main() in build.sh (rm abi_gki_protected_exports_*, protected_modules
+= [] in modules.bzl) before this patch is applied, none of these
+changes need to preserve KMI symbol stability — this tree is not
+meant to interoperate with a stock GKI boot image.
+---
+ arch/arm64/configs/gki_defconfig | 62 +++++++++++++++++++--------------------
+ 1 file changed, 31 insertions(+), 31 deletions(-)
+
+index 9d7fc2a..867bc2d 100644
+--- a/arch/arm64/configs/gki_defconfig
++++ b/arch/arm64/configs/gki_defconfig
+@@ -1,7 +1,7 @@
+ CONFIG_UAPI_HEADER_TEST=y
+ CONFIG_LOCALVERSION="-4k"
+ CONFIG_AUDIT=y
+-CONFIG_TIME_KUNIT_TEST=m
++# CONFIG_TIME_KUNIT_TEST is not set
+ CONFIG_NO_HZ=y
+ CONFIG_HIGH_RES_TIMERS=y
+ CONFIG_BPF_SYSCALL=y
+@@ -77,8 +77,8 @@ CONFIG_PM_USERSPACE_AUTOSLEEP=y
+ CONFIG_PM_WAKELOCKS=y
+ CONFIG_PM_WAKELOCKS_LIMIT=0
+ # CONFIG_PM_WAKELOCKS_GC is not set
+-CONFIG_PM_DEBUG=y
+-CONFIG_PM_ADVANCED_DEBUG=y
++# CONFIG_PM_DEBUG is not set
++# CONFIG_PM_ADVANCED_DEBUG is not set
+ CONFIG_ENERGY_MODEL=y
+ CONFIG_CPU_IDLE=y
+ CONFIG_CPU_IDLE_GOV_MENU=y
+@@ -93,7 +93,7 @@ CONFIG_ARM_SCPI_CPUFREQ=y
+ CONFIG_ARM_SCMI_CPUFREQ=y
+ CONFIG_VIRTUALIZATION=y
+ CONFIG_KVM=y
+-CONFIG_PTDUMP_STAGE2_DEBUGFS=y
++# CONFIG_PTDUMP_STAGE2_DEBUGFS is not set
+ CONFIG_KPROBES=y
+ CONFIG_JUMP_LABEL=y
+ CONFIG_SHADOW_CALL_STACK=y
+@@ -128,7 +128,7 @@ CONFIG_TRANSPARENT_HUGEPAGE=y
+ CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y
+ CONFIG_CLEANCACHE=y
+ CONFIG_CMA=y
+-CONFIG_CMA_DEBUGFS=y
++# CONFIG_CMA_DEBUGFS is not set
+ CONFIG_CMA_AREAS=16
+ # CONFIG_ZONE_DMA is not set
+ CONFIG_ANON_VMA_NAME=y
+@@ -307,7 +307,7 @@ CONFIG_BT_HCIUART_QCA=y
+ CONFIG_RFKILL=m
+ CONFIG_NET_9P=m
+ CONFIG_NFC=m
+-CONFIG_NETDEV_ADDR_LIST_TEST=m
++# CONFIG_NETDEV_ADDR_LIST_TEST is not set
+ CONFIG_PCI=y
+ CONFIG_PCIEPORTBUS=y
+ CONFIG_PCIEAER=y
+@@ -503,8 +503,8 @@ CONFIG_SND_HRTIMER=y
+ # CONFIG_SND_DRIVERS is not set
+ CONFIG_SND_USB_AUDIO=y
+ CONFIG_SND_SOC=y
+-CONFIG_SND_SOC_TOPOLOGY_KUNIT_TEST=m
+-CONFIG_SND_SOC_UTILS_KUNIT_TEST=m
++# CONFIG_SND_SOC_TOPOLOGY_KUNIT_TEST is not set
++# CONFIG_SND_SOC_UTILS_KUNIT_TEST is not set
+ CONFIG_HID_BATTERY_STRENGTH=y
+ CONFIG_HIDRAW=y
+ CONFIG_UHID=y
+@@ -528,7 +528,7 @@ CONFIG_SONY_FF=y
+ CONFIG_HID_STEAM=y
+ CONFIG_HID_WACOM=y
+ CONFIG_HID_WIIMOTE=y
+-CONFIG_HID_KUNIT_TEST=m
++# CONFIG_HID_KUNIT_TEST is not set
+ CONFIG_USB_HIDDEV=y
+ CONFIG_USB_ANNOUNCE_NEW_DEVICES=y
+ CONFIG_USB_OTG=y
+@@ -583,7 +583,7 @@ CONFIG_LEDS_TRIGGER_TIMER=y
+ CONFIG_LEDS_TRIGGER_TRANSIENT=y
+ CONFIG_EDAC=y
+ CONFIG_RTC_CLASS=y
+-CONFIG_RTC_LIB_KUNIT_TEST=m
++# CONFIG_RTC_LIB_KUNIT_TEST is not set
+ CONFIG_RTC_DRV_PL030=y
+ CONFIG_RTC_DRV_PL031=y
+ CONFIG_UDMABUF=y
+@@ -605,8 +605,8 @@ CONFIG_STAGING=y
+ CONFIG_ASHMEM=y
+ CONFIG_COMMON_CLK_SCPI=y
+ # CONFIG_SUNXI_CCU is not set
+-CONFIG_CLK_KUNIT_TEST=m
+-CONFIG_CLK_GATE_KUNIT_TEST=m
++# CONFIG_CLK_KUNIT_TEST is not set
++# CONFIG_CLK_GATE_KUNIT_TEST is not set
+ CONFIG_HWSPINLOCK=y
+ # CONFIG_SUN50I_ERRATUM_UNKNOWN1 is not set
+ CONFIG_IOMMU_IO_PGTABLE_ARMV7S=y
+@@ -624,7 +624,7 @@ CONFIG_MEMORY=y
+ CONFIG_IIO=y
+ CONFIG_IIO_BUFFER=y
+ CONFIG_IIO_TRIGGER=y
+-CONFIG_IIO_FORMAT_KUNIT_TEST=m
++# CONFIG_IIO_FORMAT_KUNIT_TEST is not set
+ CONFIG_PWM=y
+ CONFIG_POWERCAP=y
+ CONFIG_IDLE_INJECT=y
+@@ -640,7 +640,7 @@ CONFIG_LIBNVDIMM=y
+ CONFIG_EXT4_FS=y
+ CONFIG_EXT4_FS_POSIX_ACL=y
+ CONFIG_EXT4_FS_SECURITY=y
+-CONFIG_EXT4_KUNIT_TESTS=m
++# CONFIG_EXT4_KUNIT_TESTS is not set
+ CONFIG_F2FS_FS=y
+ CONFIG_F2FS_FS_SECURITY=y
+ CONFIG_F2FS_FS_COMPRESSION=y
+@@ -658,7 +658,7 @@ CONFIG_OVERLAY_FS=y
+ CONFIG_INCREMENTAL_FS=y
+ CONFIG_MSDOS_FS=y
+ CONFIG_VFAT_FS=y
+-CONFIG_FAT_KUNIT_TEST=m
++# CONFIG_FAT_KUNIT_TEST is not set
+ CONFIG_EXFAT_FS=y
+ CONFIG_TMPFS=y
+ # CONFIG_EFIVAR_FS is not set
+@@ -765,29 +765,27 @@ CONFIG_MODULE_ALLOW_BTF_MISMATCH=y
+ CONFIG_HEADERS_INSTALL=y
+ # CONFIG_SECTION_MISMATCH_WARN_ONLY is not set
+ CONFIG_MAGIC_SYSRQ=y
+-CONFIG_UBSAN=y
+-CONFIG_UBSAN_TRAP=y
++# CONFIG_UBSAN is not set
++# CONFIG_UBSAN_TRAP is not set
+ # CONFIG_UBSAN_SHIFT is not set
+ # CONFIG_UBSAN_BOOL is not set
+ # CONFIG_UBSAN_ENUM is not set
+-CONFIG_PAGE_OWNER=y
+-CONFIG_PAGE_PINNER=y
+-CONFIG_DEBUG_MEMORY_INIT=y
+-CONFIG_KASAN=y
+-CONFIG_KASAN_HW_TAGS=y
+-CONFIG_KFENCE=y
+-CONFIG_KFENCE_SAMPLE_INTERVAL=500
+-CONFIG_KFENCE_NUM_OBJECTS=63
++# CONFIG_PAGE_OWNER is not set
++# CONFIG_PAGE_PINNER is not set
++# CONFIG_DEBUG_MEMORY_INIT is not set
++# CONFIG_KASAN is not set
++# CONFIG_KASAN_HW_TAGS is not set
++# CONFIG_KFENCE is not set
+ CONFIG_PANIC_ON_OOPS=y
+ CONFIG_PANIC_TIMEOUT=-1
+-CONFIG_SOFTLOCKUP_DETECTOR=y
+-CONFIG_WQ_WATCHDOG=y
+-CONFIG_SCHEDSTATS=y
+-CONFIG_HIST_TRIGGERS=y
+-CONFIG_PID_IN_CONTEXTIDR=y
+-CONFIG_KUNIT=m
+-CONFIG_KUNIT_DEBUGFS=y
+-CONFIG_KUNIT_TEST=m
+-CONFIG_KUNIT_EXAMPLE_TEST=m
++# CONFIG_SOFTLOCKUP_DETECTOR is not set
++# CONFIG_WQ_WATCHDOG is not set
++# CONFIG_SCHEDSTATS is not set
++# CONFIG_HIST_TRIGGERS is not set
++# CONFIG_PID_IN_CONTEXTIDR is not set
++# CONFIG_KUNIT is not set
++# CONFIG_KUNIT_DEBUGFS is not set
++# CONFIG_KUNIT_TEST is not set
++# CONFIG_KUNIT_EXAMPLE_TEST is not set
+ # CONFIG_KUNIT_DEFAULT_ENABLED is not set
+ # CONFIG_RUNTIME_TESTING_MENU is not set

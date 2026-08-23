@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TCP Congestion Control | TCP 拥塞控制设置</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, sans-serif; max-width: 560px; margin: 24px auto; padding: 0 16px; background: #111; color: #ddd; }
+  h1 { font-size: 18px; color: #fff; display: inline-block; }
+  #lang { float: right; background: #26262a; color: #ddd; border: 1px solid #444; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+  .card { background: #1c1c1e; border: 1px solid #333; border-radius: 10px; padding: 16px; margin: 14px 0; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #26262a; }
+  .row:last-child { border-bottom: none; }
+  label { flex: 1; }
+  .hint { color: #888; font-size: 12px; }
+  .cur { color: #5cc; font-size: 12px; }
+  button { background: #2a6; color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; cursor: pointer; }
+  button:disabled { background: #444; }
+  select { background: #26262a; color: #ddd; border: 1px solid #444; border-radius: 6px; padding: 6px; }
+  #msg { color: #5c5; font-size: 13px; min-height: 18px; margin-top: 10px; }
+  #msg.err { color: #d55; }
+</style>
+</head>
+<body>
+<h1>TCP Congestion Control | TCP 拥塞控制设置</h1>
+<button id="lang">EN</button>
+
+<div class="card">
+  <div class="row"><label data-i18n="l_algo">当前算法</label><span id="cur_algo" class="cur">…</span></div>
+  <div class="row"><label data-i18n="l_qdisc">当前 qdisc</label><span id="cur_qdisc" class="cur">…</span></div>
+  <div class="row"><label data-i18n="l_dflt">内核编译默认</label><span id="dflt_algo" class="cur">…</span></div>
+</div>
+
+<div class="card">
+  <div class="row"><label><b data-i18n="l_sect">拥塞控制算法</b><br><span class="hint" data-i18n="l_hint">只影响新连接；已建立的连接不受影响</span></label></div>
+  <div class="row"><label><input type="radio" name="algo" value="cubic"> <span data-i18n="l_opt1">Android 默认 (cubic)</span></label></div>
+  <div class="row"><label><input type="radio" name="algo" value="bbr"> <span data-i18n="l_opt2">BBR</span></label></div>
+  <div class="row"><label><input type="radio" name="algo" value="kerneldflt"> <span data-i18n="l_opt3">内核编译默认（跟随 config）</span></label></div>
+  <div class="row"><label data-i18n="l_qd">队列规则 qdisc</label>
+    <select id="qdisc">
+      <option value="fq">fq</option>
+      <option value="fq_codel" selected>fq_codel</option>
+      <option value="pfifo_fast">pfifo_fast</option>
+    </select>
+  </div>
+  <button id="apply" data-i18n="l_apply">应用并保存</button>
+  <div id="msg"></div>
+</div>
+
+<div class="card" id="notes">
+  <b data-i18n="n_title">说明 Notes</b>
+  <div class="row"><label data-i18n="n_cubic">cubic — Android 默认，兼容性最好；日常与移动网络优先</label></div>
+  <div class="row"><label data-i18n="n_bbr">BBR — 高带宽/高延迟场景（Wi-Fi、固定线路）收益明显，建议配 fq；弱信号移动网络下可能偏激进</label></div>
+  <div class="row"><label data-i18n="n_kerneldflt">内核编译默认 — 跟随内核构建时选择的算法（当前 config 为 cubic）</label></div>
+  <div class="row"><label data-i18n="n_fq">fq — 公平队列，与 BBR 搭配最佳</label></div>
+  <div class="row"><label data-i18n="n_fqcodel">fq_codel — 通用默认，日常推荐</label></div>
+  <div class="row"><label data-i18n="n_pfifo">pfifo_fast — 简单先入先出，省资源但无队列管理</label></div>
+  <div class="row"><label data-i18n="n_note">只影响新建立的连接；重启后自动恢复上次的选择</label></div>
+</div>
+
+<script src="index.js"></script>
+<script>
+const I18N = {
+  zh: {
+    t_title: 'TCP Congestion Control | TCP 拥塞控制设置', l_algo: '当前算法', l_qdisc: '当前 qdisc', l_dflt: '内核编译默认',
+    l_sect: '拥塞控制算法', l_hint: '只影响新连接；已建立的连接不受影响',
+    l_opt1: 'Android 默认 (cubic)', l_opt2: 'BBR', l_opt3: '内核编译默认（跟随 config）',
+    l_qd: '队列规则 qdisc', l_apply: '应用并保存',
+    n_title: '说明 Notes',
+    n_cubic: 'cubic — Android 默认，兼容性最好；日常与移动网络优先',
+    n_bbr: 'BBR — 高带宽/高延迟场景（Wi-Fi、固定线路）收益明显，建议配 fq；弱信号移动网络下可能偏激进',
+    n_kerneldflt: '内核编译默认 — 跟随内核构建时选择的算法（当前 config 为 cubic）',
+    n_fq: 'fq — 公平队列，与 BBR 搭配最佳',
+    n_fqcodel: 'fq_codel — 通用默认，日常推荐',
+    n_pfifo: 'pfifo_fast — 简单先入先出，省资源但无队列管理',
+    n_note: '只影响新建立的连接；重启后自动恢复上次的选择',
+    m_applying: '应用中…', m_ok: '已应用：', m_reboot: '（重启后自动恢复）', m_fail: '失败：',
+    m_reqfail: '请求失败：', m_dflt_note: '（当前即默认）'
+  },
+  en: {
+    t_title: 'TCP Congestion Control', l_algo: 'Current algorithm', l_qdisc: 'Current qdisc', l_dflt: 'Kernel default',
+    l_sect: 'Congestion control', l_hint: 'Affects new connections only; established ones keep their algorithm',
+    l_opt1: 'Android default (cubic)', l_opt2: 'BBR', l_opt3: 'Kernel compiled default (from config)',
+    l_qd: 'Queueing discipline', l_apply: 'Apply & save',
+    n_title: 'Notes',
+    n_cubic: 'cubic — Android default, best compatibility; prefer it for daily use and mobile networks',
+    n_bbr: 'BBR — best on high bandwidth/latency links (Wi-Fi, wired); pairs well with fq; can be aggressive on weak cellular signals',
+    n_kerneldflt: 'Kernel default — follows the algorithm chosen at kernel build (currently cubic in config)',
+    n_fq: 'fq — fair queueing, the recommended pairing for BBR',
+    n_fqcodel: 'fq_codel — general default, fine for daily use',
+    n_pfifo: 'pfifo_fast — plain FIFO, cheap but no queue management',
+    n_note: 'Affects new connections only; your choice is restored after reboot',
+    m_applying: 'Applying…', m_ok: 'Applied: ', m_reboot: ' (restored on reboot)', m_fail: 'Failed: ',
+    m_reqfail: 'Request failed: ', m_dflt_note: ' (this is the default)'
+  }
+};
+
+let lang = localStorage.getItem('tcpcfg_lang2') || 'en';
+document.getElementById('lang').textContent = lang === 'zh' ? 'EN' : '中文';
+
+function t() {
+  const d = I18N[lang];
+  document.querySelectorAll('[data-i18n]').forEach(function (el) {
+    const k = el.getAttribute('data-i18n');
+    if (d[k]) el.textContent = d[k];
+  });
+}
+function setLang(l) {
+  lang = l; localStorage.setItem('tcpcfg_lang2', l);
+  document.getElementById('lang').textContent = l === 'zh' ? 'EN' : '中文';
+  t();
+}
+document.getElementById('lang').onclick = function () { setLang(lang === 'zh' ? 'en' : 'zh'); };
+
+async function load() {
+  const s = await TCPC.getStatus();
+  document.getElementById('cur_algo').textContent = s.algo;
+  document.getElementById('cur_qdisc').textContent = s.qdisc;
+  const dflt = document.getElementById('dflt_algo');
+  dflt.textContent = s.dflt + (s.dflt === s.algo ? I18N[lang].m_dflt_note : '');
+  // restore the last saved selection (radio + qdisc), if any
+  if (s.state_algo) {
+    const radio = document.querySelector('input[name=algo][value="' + s.state_algo + '"]');
+    if (radio) radio.checked = true;
+  }
+  if (s.state_qdisc) document.getElementById('qdisc').value = s.state_qdisc;
+}
+async function doApply() {
+  const checked = document.querySelector('input[name=algo]:checked');
+  const algo = checked ? checked.value : 'kerneldflt';
+  const qdisc = document.getElementById('qdisc').value;
+  const msg = document.getElementById('msg');
+  msg.textContent = I18N[lang].m_applying; msg.className = '';
+  try {
+    const s = await TCPC.apply(algo, qdisc);
+    if (s.ok) {
+      msg.textContent = I18N[lang].m_ok + s.algo + ' / ' + s.qdisc + I18N[lang].m_reboot;
+      load();
+    } else {
+      msg.textContent = I18N[lang].m_fail + (s.error || '?'); msg.className = 'err';
+    }
+  } catch (e) {
+    msg.textContent = I18N[lang].m_reqfail + e; msg.className = 'err';
+  }
+}
+document.getElementById('apply').onclick = doApply;
+t(); load();
+</script>
+</body>
+</html>

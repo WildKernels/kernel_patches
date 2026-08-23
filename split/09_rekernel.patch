@@ -1,0 +1,231 @@
+diff --git a/drivers/android/binder.c b/drivers/android/binder.c
+index efa3bd6fe..c4ea9b6d6 100644
+--- a/drivers/android/binder.c
++++ b/drivers/android/binder.c
+@@ -44,6 +44,9 @@
+ 
+ #include <linux/fdtable.h>
+ #include <linux/file.h>
++#ifdef CONFIG_REKERNEL
++#include "../rekernel/rekernel.h"
++#endif
+ #include <linux/freezer.h>
+ #include <linux/fs.h>
+ #include <linux/list.h>
+@@ -3288,6 +3291,20 @@ static void binder_transaction(struct binder_proc *proc,
+ 		target_proc->tmp_ref++;
+ 		binder_inner_proc_unlock(target_thread->proc);
+ 		trace_android_vh_binder_reply(target_proc, proc, thread, tr);
++#ifdef CONFIG_REKERNEL
++		if (start_rekernel_server() == 0) {
++			if (target_proc
++				&& (NULL != target_proc->tsk)
++				&& (NULL != proc->tsk)
++				&& (task_uid(target_proc->tsk).val <= MAX_SYSTEM_UID)
++				&& (proc->pid != target_proc->pid)
++				&& line_is_frozen(target_proc->tsk)) {
++     				char binder_kmsg[PACKET_SIZE];
++                       	snprintf(binder_kmsg, sizeof(binder_kmsg), "type=Binder,bindertype=reply,oneway=0,from_pid=%d,from=%d,target_pid=%d,target=%d;", proc->pid, task_uid(proc->tsk).val, target_proc->pid, task_uid(target_proc->tsk).val);
++         			send_netlink_message(binder_kmsg, strlen(binder_kmsg));
++			}
++   		}
++#endif
+ 	} else {
+ 		if (tr->target.handle) {
+ 			struct binder_ref *ref;
+@@ -3342,6 +3359,20 @@ static void binder_transaction(struct binder_proc *proc,
+ 			goto err_dead_binder;
+ 		}
+ 		e->to_node = target_node->debug_id;
++#ifdef CONFIG_REKERNEL
++		if (start_rekernel_server() == 0) {
++			if (target_proc
++				&& (NULL != target_proc->tsk)
++				&& (NULL != proc->tsk)
++				&& (task_uid(target_proc->tsk).val > MIN_USERAPP_UID)
++				&& (proc->pid != target_proc->pid)
++				&& line_is_frozen(target_proc->tsk)) {
++     				char binder_kmsg[PACKET_SIZE];
++                       	snprintf(binder_kmsg, sizeof(binder_kmsg), "type=Binder,bindertype=transaction,oneway=%d,from_pid=%d,from=%d,target_pid=%d,target=%d;", tr->flags & TF_ONE_WAY, proc->pid, task_uid(proc->tsk).val, target_proc->pid, task_uid(target_proc->tsk).val);
++         			send_netlink_message(binder_kmsg, strlen(binder_kmsg));
++			}
++   		}
++#endif
+ 		if (WARN_ON(proc == target_proc)) {
+ 			binder_txn_error("%d:%d self transactions not allowed\n",
+ 				thread->pid, proc->pid);
+diff --git a/drivers/android/binder_alloc.c b/drivers/android/binder_alloc.c
+index c8fbeb18f..c3606604a 100644
+--- a/drivers/android/binder_alloc.c
++++ b/drivers/android/binder_alloc.c
+@@ -16,6 +16,9 @@
+ #include <linux/seq_file.h>
+ #include <linux/vmalloc.h>
+ #include <linux/slab.h>
++#ifdef CONFIG_REKERNEL
++#include "../rekernel/rekernel.h"
++#endif
+ #include <linux/sched.h>
+ #include <linux/list_lru.h>
+ #include <linux/ratelimit.h>
+@@ -459,6 +462,22 @@ static struct binder_buffer *binder_alloc_new_buf_locked(
+ 	}
+ 
+ 	if (is_async && alloc->free_async_space < size) {
++#ifdef CONFIG_REKERNEL
++		if (alloc->free_async_space < 3 * (size + sizeof(struct binder_buffer))
++			|| (alloc->free_async_space < WARN_AHEAD_SPACE)) {
++			struct task_struct *proc_task = NULL;
++			rcu_read_lock();
++			proc_task = find_task_by_vpid(alloc->pid);
++			rcu_read_unlock();
++			if (proc_task != NULL && start_rekernel_server() == 0) {
++				if (line_is_frozen(proc_task)) {
++     					char binder_kmsg[PACKET_SIZE];
++                       			snprintf(binder_kmsg, sizeof(binder_kmsg), "type=Binder,bindertype=free_buffer_full,oneway=1,from_pid=%d,from=%d,target_pid=%d,target=%d;", current->pid, task_uid(current).val, proc_task->pid, task_uid(proc_task).val);
++         				send_netlink_message(binder_kmsg, strlen(binder_kmsg));
++				}
++			}
++		}
++#endif
+ 		binder_alloc_debug(BINDER_DEBUG_BUFFER_ALLOC,
+ 			     "%d: binder_alloc_buf size %zd failed, no async space left\n",
+ 			      alloc->pid, size);
+diff --git a/drivers/rekernel/rekernel.h b/drivers/rekernel/rekernel.h
+new file mode 100644
+index 000000000..2b4c15f41
+--- /dev/null
++++ b/drivers/rekernel/rekernel.h
+@@ -0,0 +1,102 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/* Re:Kernel netlink server (from Sakion-Team/Re-Kernel Integrate guide) */
++#include <linux/init.h>
++#include <linux/types.h>
++#include <net/sock.h>
++#include <linux/netlink.h>
++#include <linux/proc_fs.h>
++#include <linux/freezer.h>
++#ifdef CONFIG_CGROUP_FREEZER
++#include <linux/sched/jobctl.h>
++#endif
++
++#define NETLINK_REKERNEL_MAX     		26
++#define NETLINK_REKERNEL_MIN     		22
++#define USER_PORT        			100
++#define PACKET_SIZE 				128
++#define MIN_USERAPP_UID 			(10000)
++#define MAX_SYSTEM_UID  			(2000)
++#define RESERVE_ORDER				17
++#define WARN_AHEAD_SPACE			(1 << RESERVE_ORDER)
++
++static struct sock *rekernel_netlink = NULL;
++extern struct net init_net;
++static int netlink_unit = NETLINK_REKERNEL_MIN;
++
++static inline bool line_is_frozen(struct task_struct *task)
++{
++    return frozen(task->group_leader) || freezing(task->group_leader);
++}
++
++static int send_netlink_message(char *msg, uint16_t len) {
++    struct sk_buff *skbuffer;
++    struct nlmsghdr *nlhdr;
++
++    skbuffer = nlmsg_new(len, GFP_ATOMIC);
++    if (!skbuffer) {
++        printk("netlink alloc failure.\n");
++        return -1;
++    }
++
++    nlhdr = nlmsg_put(skbuffer, 0, 0, netlink_unit, len, 0);
++    if (!nlhdr) {
++        printk("nlmsg_put failaure.\n");
++        nlmsg_free(skbuffer);
++        return -1;
++    }
++
++    memcpy(nlmsg_data(nlhdr), msg, len);
++    return netlink_unicast(rekernel_netlink, skbuffer, USER_PORT, MSG_DONTWAIT);
++}
++
++static void netlink_rcv_msg(struct sk_buff *skbuffer) { /* Ignore recv msg */ }
++
++static struct netlink_kernel_cfg rekernel_cfg = {
++    .input = netlink_rcv_msg,
++};
++
++static int rekernel_unit_show(struct seq_file *m, void *v)
++{
++    seq_printf(m, "%d\n", netlink_unit);
++    return 0;
++}
++
++static int rekernel_unit_open(struct inode *inode, struct file *file)
++{
++    return single_open(file, rekernel_unit_show, NULL);
++}
++
++static const struct proc_ops rekernel_unit_fops = {
++    .proc_open   = rekernel_unit_open,
++    .proc_read   = seq_read,
++    .proc_lseek  = seq_lseek,
++    .proc_release = single_release,
++};
++
++static struct proc_dir_entry *rekernel_dir, *rekernel_unit_entry;
++
++static int start_rekernel_server(void) {
++  if (rekernel_netlink != NULL)
++    return 0;
++  for (netlink_unit = NETLINK_REKERNEL_MIN; netlink_unit < NETLINK_REKERNEL_MAX; netlink_unit++) {
++    rekernel_netlink = (struct sock *)netlink_kernel_create(&init_net, netlink_unit, &rekernel_cfg);
++    if (rekernel_netlink != NULL)
++      break;
++  }
++  if (rekernel_netlink == NULL) {
++    printk("Failed to create Re:Kernel server!\n");
++    return -1;
++  }
++  printk("Created Re:Kernel server! NETLINK UNIT: %d\n", netlink_unit);
++  rekernel_dir = proc_mkdir("rekernel", NULL);
++  if (!rekernel_dir)
++      printk("create /proc/rekernel failed!\n");
++  else {
++      char buff[32];
++      sprintf(buff, "%d", netlink_unit);
++      rekernel_unit_entry = proc_create(buff, 0644, rekernel_dir, &rekernel_unit_fops);
++      if (!rekernel_unit_entry)
++          printk("create rekernel unit failed!\n");
++  }
++  return 0;
++}
+diff --git a/kernel/signal.c b/kernel/signal.c
+index fdaeae3bd..f4b7f56d5 100644
+--- a/kernel/signal.c
++++ b/kernel/signal.c
+@@ -21,6 +21,9 @@
+ #include <linux/sched/task_stack.h>
+ #include <linux/sched/cputime.h>
+ #include <linux/file.h>
++#ifdef CONFIG_REKERNEL
++#include "../drivers/rekernel/rekernel.h"
++#endif
+ #include <linux/fs.h>
+ #include <linux/mm.h>
+ #include <linux/proc_fs.h>
+@@ -1320,6 +1323,15 @@ int do_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *p
+ 	unsigned long flags;
+ 	int ret = -ESRCH;
+ 	trace_android_vh_do_send_sig_info(sig, current, p);
++#ifdef CONFIG_REKERNEL
++	if (start_rekernel_server() == 0) {
++ 		if (line_is_frozen(current) && (sig == SIGKILL || sig == SIGTERM || sig == SIGABRT || sig == SIGQUIT)) {
++     			char binder_kmsg[PACKET_SIZE];
++			snprintf(binder_kmsg, sizeof(binder_kmsg), "type=Signal,signal=%d,killer_pid=%d,killer=%d,dst_pid=%d,dst=%d;", sig, task_tgid_nr(p), task_uid(p).val, task_tgid_nr(current), task_uid(current).val);
++     			send_netlink_message(binder_kmsg, strlen(binder_kmsg));
++ 		}
++ 	}
++#endif
+ 	if (lock_task_sighand(p, &flags)) {
+ 		ret = send_signal_locked(sig, info, p, type);
+ 		unlock_task_sighand(p, &flags);

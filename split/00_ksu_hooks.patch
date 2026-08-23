@@ -1,0 +1,130 @@
+diff --git a/drivers/Kconfig b/drivers/Kconfig
+index efb66e25f..c1326a1ad 100644
+--- a/drivers/Kconfig
++++ b/drivers/Kconfig
+@@ -243,4 +243,5 @@ source "drivers/hte/Kconfig"
+ 
+ source "drivers/cdx/Kconfig"
+ 
++source "drivers/kernelsu/Kconfig"
+ endmenu
+
+diff --git a/drivers/Makefile b/drivers/Makefile
+index 1bec7819a..6685e7b2d 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -199,3 +199,5 @@ obj-$(CONFIG_DRM_ACCEL)		+= accel/
+ obj-$(CONFIG_CDX_BUS)		+= cdx/
+ 
+ obj-$(CONFIG_S390)		+= s390/
++
++obj-$(CONFIG_KSU) += kernelsu/
+
+diff --git a/drivers/input/input.c b/drivers/input/input.c
+index 9bb1d3de7..a6333655c 100644
+--- a/drivers/input/input.c
++++ b/drivers/input/input.c
+diff --git a/drivers/input/input.c b/drivers/input/input.c
+index 9bb1d3de7..a6333655c 100644
+--- a/drivers/input/input.c
++++ b/drivers/input/input.c
+
+diff --git a/fs/exec.c b/fs/exec.c
+index 8dc93215b..31cf058de 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+diff --git a/fs/exec.c b/fs/exec.c
+index 8dc93215b..31cf058de 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+
+diff --git a/fs/open.c b/fs/open.c
+index 0641cb3fd..9cffe460e 100644
+--- a/fs/open.c
++++ b/fs/open.c
+diff --git a/fs/open.c b/fs/open.c
+index 0641cb3fd..9cffe460e 100644
+--- a/fs/open.c
++++ b/fs/open.c
+@@ -527,6 +549,7 @@ static long do_faccessat(int dfd, const char __user *filename, int mode, int fla
+ 	return res;
+ }
+ 
++
+ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+ {
+ 	return do_faccessat(dfd, filename, mode, 0);
+
+
+diff --git a/fs/read_write.c b/fs/read_write.c
+index 066490235..2f4ff91be 100644
+--- a/fs/read_write.c
++++ b/fs/read_write.c
+diff --git a/fs/read_write.c b/fs/read_write.c
+index 066490235..2f4ff91be 100644
+--- a/fs/read_write.c
++++ b/fs/read_write.c
+
+diff --git a/fs/stat.c b/fs/stat.c
+index 517fa4ed8..618b1f243 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+diff --git a/fs/stat.c b/fs/stat.c
+index 517fa4ed8..618b1f243 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -453,6 +520,13 @@ SYSCALL_DEFINE2(newlstat, const char __user *, filename,
+ 	return cp_new_stat(&stat, statbuf);
+ }
+ 
++#endif
++
++extern void ksu_handle_newfstat_ret(unsigned int *fd, struct stat __user **statbuf_ptr);
++#if defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_COMPAT_STAT64)
++extern void ksu_handle_fstat64_ret(unsigned long *fd, struct stat64 __user **statbuf_ptr);
++#endif
++
+ #if !defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_SYS_NEWFSTATAT)
+ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+ 		struct stat __user *, statbuf, int, flag)
+@@ -474,10 +548,9 @@ SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
+ 
+ 	if (!error)
+ 		error = cp_new_stat(&stat, statbuf);
+-
++	ksu_handle_newfstat_ret(&fd, &statbuf);
+ 	return error;
+ }
+-#endif
+ 
+ static int do_readlinkat(int dfd, const char __user *pathname,
+ 			 char __user *buf, int bufsiz)
+@@ -601,7 +674,7 @@ SYSCALL_DEFINE2(fstat64, unsigned long, fd, struct stat64 __user *, statbuf)
+ 
+ 	if (!error)
+ 		error = cp_new_stat64(&stat, statbuf);
+-
++	ksu_handle_fstat64_ret(&fd, &statbuf);
+ 	return error;
+ }
+ 
+
+
+diff --git a/kernel/reboot.c b/kernel/reboot.c
+index 344ceaf5e..f4c49315e 100644
+--- a/kernel/reboot.c
++++ b/kernel/reboot.c
+diff --git a/kernel/reboot.c b/kernel/reboot.c
+index 344ceaf5e..f4c49315e 100644
+--- a/kernel/reboot.c
++++ b/kernel/reboot.c
+
+diff --git a/kernel/sys.c b/kernel/sys.c
+index c6b0141e4..56b92ea0d 100644
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+diff --git a/kernel/sys.c b/kernel/sys.c
+index c6b0141e4..56b92ea0d 100644
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+

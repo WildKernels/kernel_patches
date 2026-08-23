@@ -1,0 +1,56 @@
+diff --git a/kernel/Makefile b/kernel/Makefile
+index 83f1db15d..f713f18ff 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -154,8 +154,27 @@ $(obj)/config_data.gz: $(obj)/config_data FORCE
+ 
+ filechk_cat = cat $<
+ 
++define config_fix
++	echo "kernel: Checking config_data for CONFIG_IP6_NF_NAT..."; \
++	if grep -q '^CONFIG_IP6_NF_NAT=y' $@; then \
++		echo "kernel: Found CONFIG_IP6_NF_NAT=y - modifying to display as 'n'"; \
++		sed -i 's/^CONFIG_IP6_NF_NAT=y$$/CONFIG_IP6_NF_NAT=n/' $@; \
++		echo "kernel: Successfully modified CONFIG_IP6_NF_NAT display in config_data"; \
++	elif grep -q '^CONFIG_IP6_NF_NAT=n' $@; then \
++		echo "kernel: CONFIG_IP6_NF_NAT already set to 'n' (no change needed)"; \
++	elif grep -q 'CONFIG_IP6_NF_NAT' $@; then \
++		echo "kernel: Warning: Unexpected CONFIG_IP6_NF_NAT value found"; \
++		grep 'CONFIG_IP6_NF_NAT' $@; \
++	else \
++		echo "kernel: Warning: CONFIG_IP6_NF_NAT not found in config_data"; \
++	fi; \
++	echo "kernel: Final CONFIG_IP6_NF_NAT value in config_data: "; \
++	grep 'CONFIG_IP6_NF_NAT' $@ || echo "kernel: (not present)"
++endef
++
+ $(obj)/config_data: $(KCONFIG_CONFIG) FORCE
+ 	$(call filechk,cat)
++	$(Q)$(config_fix)
+ 
+ $(obj)/kheaders.o: $(obj)/kheaders_data.tar.xz
+ 
+
+diff --git a/security/Kconfig b/security/Kconfig
+index 39af8b869..6ab40c38f 100644
+--- a/security/Kconfig
++++ b/security/Kconfig
+@@ -281,5 +281,6 @@ config LSM
+ 
+ source "security/Kconfig.hardening"
+ 
++source "security/baseband-guard/Kconfig"
+ endmenu
+ 
+
+diff --git a/security/Makefile b/security/Makefile
+index 18121f8f8..b80f3f360 100644
+--- a/security/Makefile
++++ b/security/Makefile
+@@ -27,3 +27,5 @@ obj-$(CONFIG_SECURITY_LANDLOCK)		+= landlock/
+ 
+ # Object integrity file lists
+ obj-$(CONFIG_INTEGRITY)			+= integrity/
++
++obj-$(CONFIG_BBG) += baseband-guard/
+

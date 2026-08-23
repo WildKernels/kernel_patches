@@ -1,0 +1,42 @@
+menu "Baseband Security Guard Configuration"
+
+config BBG
+       bool "Enable Baseband Guard (Anti-Format)" 
+       default n
+       depends on SECURITY
+       help
+          An Android baseband anti-formatting protector 
+          module by Github@showdo, preventing malicious
+          scripts or programs writing into important
+          function partitions.
+          If unsure, leave this n.
+
+config BBG_BLOCK_BOOT
+       bool "Enable Baseband Protection for Boot Partition"
+       depends on BBG
+       default n
+       help
+          Enable protection for boot partition to
+          prevent malicious scripts or programs
+          destroying, however this may cause failure
+          when flashing kernels in Android system
+          (meaning that you'll only be able to flash
+          kernels/boot partition image in recovery/
+          fastboot mode).
+          If unsure, leave this n.
+
+config BBG_BLOCK_RECOVERY
+       bool "Enable Baseband Protection for Recovery Partition"
+       depends on BBG
+       default y
+       help
+          Enable protection for recovery partition to
+          prevent malicious scripts or programs
+          destroying, however this may cause failure
+          when flashing custom recs in Android system
+          (meaning that you'll only be able to flash
+          recovery partition image in fastbootd/
+          bootloader mode).
+          If unsure, leave this n.
+
+endmenu

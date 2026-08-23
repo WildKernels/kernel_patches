@@ -1,0 +1,4 @@
+allow vendor_hal_perf_default ksu dir search
+allow vendor_hal_perf_default kernel dir search
+allow vendor_hal_perf_default ksu file { read open getattr }
+allow vendor_hal_perf_default kernel file { read open getattr }

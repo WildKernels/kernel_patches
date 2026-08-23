@@ -1,0 +1,6 @@
+id=tcp-config
+name=TCP Congestion Config (WebUI)
+version=v1.0
+versionCode=1
+author=GuLingguang
+description=Runtime TCP congestion control & qdisc settings via a web page (busybox httpd :8090). Pick Android default (cubic) / BBR / kernel default; BBR pairs with fq automatically.
