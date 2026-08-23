@@ -1,0 +1,128 @@
+From 34f58fb007ae450ed8f25b3296eec42e8a3cbb6d Mon Sep 17 00:00:00 2001
+From: fatalcoder524 <11532648+fatalcoder524@users.noreply.github.com>
+Date: Tue, 7 Jul 2026 12:01:10 +0000
+Subject: [PATCH] Support conditional vendor modules blacklisting
+
+Rebased against a tree that already carries a custom_module_blacklist[]
+compile-time array in kernel/module/main.c. Renamed this patch's own
+variable to config_module_blacklist to avoid colliding with that
+existing symbol, and folded the CONFIG_DEBLOAT_VENDOR_MODULES check in
+as an additional fallthrough after the existing array check, gated by
+the same vendor_debloat_key boot-mode static branch this patch adds.
+
+---
+ arch/arm64/Kconfig   |  7 +++++
+ kernel/module/main.c | 73 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 80 insertions(+)
+
+index 0639062..bf4e423 100644
+--- a/arch/arm64/Kconfig
++++ b/arch/arm64/Kconfig
+@@ -2,6 +2,13 @@ source "drivers/cpuidle/Kconfig"
+ 
+ source "drivers/cpufreq/Kconfig"
+ 
++config DEBLOAT_VENDOR_MODULES
++	string "Debloat specific custom modules"
++	default ""
++	help
++	  Pass a comma-separated list of module names to block.
++	  Example: "oplus_network_tuning,oplus_bsp_zsmalloc"
++
+ endmenu # "CPU Power Management"
+ 
+ source "drivers/acpi/Kconfig"
+diff --git a/kernel/module/main.c b/kernel/module/main.c
+index 5c95b73..1a4077e 100644
+--- a/kernel/module/main.c
++++ b/kernel/module/main.c
+@@ -68,6 +68,60 @@
+ 
+ #include "module_overlay/overlay_files.h"
+ 
++#ifndef __GENKSYMS__
++#include <linux/bootconfig.h>
++#endif
++
++extern char *saved_command_line;
++
++DEFINE_STATIC_KEY_TRUE(vendor_debloat_key);
++
++static bool __init is_normal_boot(void)
++{
++	const char *mode;
++
++	mode = xbc_find_value("androidboot.mode", NULL);
++	if (!mode) {
++		char *p = strstr(saved_command_line, "androidboot.mode=");
++		static char buf[32];
++
++		if (p) {
++			size_t len;
++			p += strlen("androidboot.mode=");
++			len = strcspn(p, " \t\n");
++			if (len >= sizeof(buf))
++				len = sizeof(buf) - 1;
++			memcpy(buf, p, len);
++			buf[len] = '\0';
++			mode = buf;
++		}
++	}
++
++	if (mode && (!strcmp(mode, "normal") || !strcmp(mode, "reboot")))
++		return true;
++
++	// Value check skipped as recovery partition is different and boot is diffrent
++	if (xbc_find_value("androidboot.force_normal_boot", NULL) || strstr(saved_command_line, "androidboot.force_normal_boot"))
++		return true;
++
++	if (strstr(saved_command_line, "oplusboot.mode=normal") || strstr(saved_command_line, "oplusboot.mode=reboot"))
++		return true;
++
++	return false;
++}
++
++static int __init init_vendor_debloat_boot_check(void)
++{
++	if (is_normal_boot()) {
++		pr_info("Boot Mode: Standard state. Debloater remains ACTIVE.\n");
++	} else {
++		pr_info("Boot Mode: Non-standard boot detected. Disabling module debloater.\n");
++		static_branch_disable(&vendor_debloat_key);
++	}
++	return 0;
++}
++early_initcall(init_vendor_debloat_boot_check);
++
+ /*
+  * Mutex protects:
+  * 1) List of modules (also safely readable with preempt_disable),
+@@ -2400,6 +2454,7 @@ static char *custom_module_blacklist[] = {
+     "zsmalloc",
+ #endif
+ };
++static const char *config_module_blacklist = CONFIG_DEBLOAT_VENDOR_MODULES;
+ 
+ static bool blacklisted(const char *module_name)
+ {
+@@ -2423,6 +2478,20 @@ custom_blacklist:
+ 		if (!strcmp(module_name, custom_module_blacklist[i]))
+ 			return true;
+ 
++	if (static_branch_likely(&vendor_debloat_key)) {
++		if (!config_module_blacklist || config_module_blacklist[0] == '\0')
++			goto out;
++
++		for (p = config_module_blacklist; *p; p += len) {
++			len = strcspn(p, ",");
++			if (strlen(module_name) == len && !memcmp(module_name, p, len))
++				return true;
++			if (p[len] == ',')
++				len++;
++		}
++	}
++
++out:
+ 	return false;
+ }
+ core_param(module_blacklist, module_blacklist, charp, 0400);
