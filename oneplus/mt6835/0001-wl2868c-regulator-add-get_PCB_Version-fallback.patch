@@ -1,0 +1,46 @@
+From: FRTI64 <frti64@users.noreply.github.com>
+Subject: [PATCH] drivers/regulator: wl2868c-regulator: add get_PCB_Version() fallback
+
+get_PCB_Version() is exported by the OPLUS "oplus_project" vendor module
+(vendor/oplus/kernel/system/oplus_project in the OnePlus modules repo),
+which this pipeline does not build. wl2868c-regulator.ko references the
+symbol unconditionally, so modpost fails with:
+
+  ERROR: modpost: "get_PCB_Version" [drivers/regulator/wl2868c-regulator.ko] undefined!
+
+Provide a weak fallback returning PCB_VERSION_PVT1 so the module links
+standalone; production boards (PVT1+) keep the wl2868c PMIC OCP
+protection enabled, matching stock behaviour.
+
+diff --git a/drivers/regulator/wl2868c-regulator.c b/drivers/regulator/wl2868c-regulator.c
+index 4125bcf..e5a5199 100755
+--- a/drivers/regulator/wl2868c-regulator.c
++++ b/drivers/regulator/wl2868c-regulator.c
+@@ -8,8 +8,6 @@
+ #include <linux/gpio/consumer.h>
+ #include <linux/gpio.h>
+ 
+-extern unsigned int get_PCB_Version(void);
+-
+ enum PCB_VERSION{
+     PCB_UNKNOWN,
+     PCB_VERSION_EVB1,
+@@ -28,6 +26,18 @@ enum PCB_VERSION{
+     PCB_VERSION_MAX,
+ };
+ 
++/*
++ * get_PCB_Version() is exported by the OPLUS "oplus_project" vendor
++ * module which is not built in this pipeline. Provide a weak fallback
++ * so this module links standalone; production boards (PVT1+) keep the
++ * wl2868c PMIC OCP protection enabled, matching stock behaviour.
++ */
++unsigned int __attribute__((weak)) get_PCB_Version(void)
++{
++	return PCB_VERSION_PVT1;
++}
++EXPORT_SYMBOL(get_PCB_Version);
++
+ struct wl2868c_platform_data {
+ 	struct device *dev;
+ 	struct regmap *regmap;
