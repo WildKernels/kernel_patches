@@ -10,7 +10,7 @@ index cf12e428..b17d5fbe 100644
  
  #include "policy/allowlist.h"
  #include "policy/app_profile.h"
-@@ -18,21 +19,13 @@
+@@ -18,22 +19,14 @@
  #include "ksu.h"
  #include "infra/file_wrapper.h"
  #include "selinux/selinux.h"
@@ -21,6 +21,7 @@ index cf12e428..b17d5fbe 100644
  #include "feature/shell_su_adb_only.h"
  #include "feature/sulog.h"
 -#include "infra/symbol_resolver.h"
+ #include "preinit/preinit.h"
 -
 -#if defined(__x86_64__) && !defined(CONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER)
 -#include <asm/cpufeature.h>
@@ -34,7 +35,7 @@ index cf12e428..b17d5fbe 100644
  
  // workaround for A12-5.10 kernel
  // Some third-party kernel (e.g. linegaeOS) uses wrong toolchain, which supports
-@@ -83,11 +76,6 @@ module_param(allow_shell, bool, 0);
+@@ -84,11 +77,6 @@ module_param(allow_shell, bool, 0);
  bool ksu_no_custom_rc = false;
  module_param_named(norc, ksu_no_custom_rc, bool, 0);
  
@@ -46,7 +47,7 @@ index cf12e428..b17d5fbe 100644
  int __init kernelsu_init(void)
  {
  #ifdef KSU_MANAGER_PACKAGE
-@@ -95,27 +83,6 @@ int __init kernelsu_init(void)
+@@ -96,27 +84,6 @@ int __init kernelsu_init(void)
  #else
  	pr_info("welcome to KernelSU version " __stringify(KERNEL_SU_VERSION) "\n");
  #endif
@@ -74,7 +75,7 @@ index cf12e428..b17d5fbe 100644
  
  #ifdef CONFIG_KSU_DEBUG
  	pr_alert("*************************************************************");
-@@ -126,6 +93,7 @@ int __init kernelsu_init(void)
+@@ -127,6 +94,7 @@ int __init kernelsu_init(void)
  	pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
  	pr_alert("*************************************************************");
  #endif
@@ -82,7 +83,7 @@ index cf12e428..b17d5fbe 100644
  	if (allow_shell) {
  		pr_alert("shell is allowed at init!");
  	}
-@@ -136,82 +104,44 @@ int __init kernelsu_init(void)
+@@ -137,86 +106,46 @@ int __init kernelsu_init(void)
  		return -ENOSYS;
  	}
  
@@ -139,6 +140,7 @@ index cf12e428..b17d5fbe 100644
  
 -		ksu_feature_apply_forced();
 +	ksu_ksud_init();
++	ksu_preinit_init();
  
 -		if (!getenforce()) {
 -			pr_info("Permissive SELinux, enforcing\n");
@@ -154,6 +156,8 @@ index cf12e428..b17d5fbe 100644
 -		ksu_throne_tracker_init();
 -
 -		ksu_ksud_init();
+-
+-		ksu_preinit_init();
 -
 -		ksu_file_wrapper_init();
 -	}
@@ -173,13 +177,16 @@ index cf12e428..b17d5fbe 100644
 -
  	ksu_supercalls_exit();
  
--	if (!ksu_late_loaded)
+-	if (!ksu_late_loaded) {
 -		ksu_ksud_exit();
+-		ksu_preinit_exit();
+-	}
 +	ksu_ksud_exit();
++	ksu_preinit_exit();
  
  	// Wait for any in-flight RCU readers (e.g. handler traversing allow_list)
  	synchronize_rcu();
-@@ -225,7 +155,6 @@ void __exit kernelsu_exit(void)
+@@ -230,7 +158,6 @@ void __exit kernelsu_exit(void)
  
  	ksu_shell_su_adb_only_exit();
  	ksu_selinux_hide_exit();

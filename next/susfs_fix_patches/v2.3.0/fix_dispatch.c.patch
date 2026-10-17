@@ -2,7 +2,7 @@ diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
 index 955a1df0..b958ff58 100644
 --- a/kernel/supercall/dispatch.c
 +++ b/kernel/supercall/dispatch.c
-@@ -44,22 +44,12 @@ static int do_get_info(void __user *arg)
+@@ -48,22 +48,12 @@ static int do_get_info(void __user *arg)
  {
      struct ksu_get_info_cmd cmd = { .version = KERNEL_SU_VERSION, .flags = 0 };
  
@@ -22,10 +22,10 @@ index 955a1df0..b958ff58 100644
 -    if (ksu_late_loaded) {
 -        cmd.flags |= KSU_GET_INFO_FLAG_LATE_LOAD;
 -    }
-     cmd.features = KSU_FEATURE_MAX;
-     cmd.uapi_version = KERNEL_SU_UAPI_VERSION;
- 
-@@ -75,19 +65,9 @@ static int do_get_info_legacy(void __user *arg)
+     // A late load never sees PID 1's selinux_setup, so preinit cannot run.
+     if (ksu_preinit_enabled_param() && !ksu_late_loaded) {
+         cmd.flags |= KSU_GET_INFO_FLAG_PREINIT;
+@@ -83,19 +73,9 @@ static int do_get_info_legacy(void __user *arg)
  {
      struct ksu_get_info_legacy_cmd cmd = { .version = KERNEL_SU_VERSION, .flags = 0 };
  

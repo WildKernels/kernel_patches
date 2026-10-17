@@ -24,7 +24,7 @@ index 83dca399..f707344a 100644
  kernelsu-objs += extras.o
  
  kernelsu-objs += infra/file_wrapper.o
-@@ -159,4 +145,14 @@ ccflags-y += -DKSU_NEW_DCACHE_FLUSH=$(KSU_NEW_DCACHE_FLUSH)
+@@ -194,4 +180,14 @@ ccflags-y += -DKSU_NEW_DCACHE_FLUSH=$(KSU_NEW_DCACHE_FLUSH)
  ccflags-y += -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat -Wno-missing-prototypes -Wno-missing-declarations
  ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable
  
@@ -43,9 +43,9 @@ diff --git a/kernel/Makefile b/kernel/Makefile
 index 14a40b61..f3485588 100644
 --- a/kernel/Makefile
 +++ b/kernel/Makefile
-@@ -33,14 +33,4 @@ format:
+@@ -36,14 +36,4 @@ format:
  check-format:
- 	find . \( -name "*.c" -o -name "*.h" \) -print0 | xargs -0 clang-format --dry-run --Werror
+ 	$(FORMAT_FILES) | xargs -0 clang-format --dry-run --Werror
  
 -## For susfs stuff ##
 -ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)

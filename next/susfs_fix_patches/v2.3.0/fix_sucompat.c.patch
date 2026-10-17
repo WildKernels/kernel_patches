@@ -50,7 +50,7 @@ index e1a589a6..67d46fe3 100644
  	pr_info("su_compat: set to %d\n", enable);
  	return 0;
  }
-@@ -80,204 +93,192 @@ static char __user *ksud_user_path(void)
+@@ -71,204 +93,192 @@ static char __user *ksud_user_path(void)
  	return userspace_stack_buffer(ksud_path, sizeof(ksud_path));
  }
  
