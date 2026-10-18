@@ -1,6 +1,11 @@
 --- a/kernel/Kbuild
 +++ b/kernel/Kbuild
-@@ -5,21 +5,36 @@
+@@ -1,25 +1,41 @@
+ kernelsu-objs := core/init.o
+ 
++
+ kernelsu-objs += feature/kernel_umount.o
+ kernelsu-objs += feature/module_blacklist.o
  kernelsu-objs += feature/sulog.o
  kernelsu-objs += feature/sucompat.o
  
@@ -47,7 +52,7 @@
  kernelsu-objs += extras.o
  
  kernelsu-objs += infra/file_wrapper.o
-@@ -28,7 +43,7 @@
+@@ -28,7 +44,7 @@
  kernelsu-objs += infra/su_mount_ns.o
  kernelsu-objs += infra/symbol_resolver.o
  
@@ -56,7 +61,7 @@
  kernelsu-objs += manager/apk_sign.o
  kernelsu-objs += manager/pkg_observer.o
  kernelsu-objs += manager/throne_tracker.o
-@@ -58,15 +73,18 @@
+@@ -58,15 +74,30 @@
  kernelsu-objs += feature/shell_su_adb_only.o
  
  ifdef KBUILD_EXTMOD
@@ -75,10 +80,31 @@
 +ifeq ($(CONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER),y)
 +ccflags-y += -DCONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER=1
 +endif
++ifeq ($(CONFIG_KSU_SAMSUNG_KDP),y)
++ccflags-y += -DCONFIG_KSU_SAMSUNG_KDP=1
++endif
++ifeq ($(CONFIG_KSU_SAMSUNG_RKP),y)
++ccflags-y += -DCONFIG_KSU_SAMSUNG_RKP=1
++endif
++ifeq ($(CONFIG_KSU_SAMSUNG_DEFEX),y)
++ccflags-y += -DCONFIG_KSU_SAMSUNG_DEFEX=1
++endif
++ifeq ($(CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT),y)
++ccflags-y += -DCONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=1
++endif
  endif
  
  ccflags-y += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include
-@@ -159,4 +177,17 @@
+@@ -85,7 +116,7 @@
+ KSU_KERNEL_DIR := $(src)
+ endif
+ 
+-ccflags-y += -I$(KSU_KERNEL_DIR) -I$(KSU_KERNEL_DIR)/include
++ccflags-y += -I$(KSU_KERNEL_DIR) -I$(KSU_KERNEL_DIR)/include -I$(KSU_KERNEL_DIR)/..
+ 
+ # preinit runner: a static nolibc binary embedded into kernelsu, see preinit/.
+ # It is built against the installed UAPI headers of the target kernel
+@@ -194,4 +225,17 @@
  ccflags-y += -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat -Wno-missing-prototypes -Wno-missing-declarations
  ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable
  

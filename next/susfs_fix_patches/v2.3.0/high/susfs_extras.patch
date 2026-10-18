@@ -11,7 +11,7 @@
  	  To compile as a module, choose M here: the
  	  module will be called kernelsu.
  
-@@ -34,6 +34,14 @@
+@@ -34,6 +34,46 @@
  	  Escalation will always use the default full root profile, and
  	  non-root handling will follow the global umount policy only.
  
@@ -23,10 +23,42 @@
 +	  Dynamically patch x64's hardened syscall dispatcher to support syscall hooks. This is a
 +	  replacement for a kernel source code patch, and is useful for x86_64 LKM mode.
 +
++config KSU_SAMSUNG_KDP
++	bool "Samsung KDP credential compatibility"
++	depends on KSU && ARM64
++	default y
++	help
++	  Install and release credentials through Samsung KDP helpers.
++	  Enable only on Samsung kernels that use KDP-protected credentials.
++
++config KSU_SAMSUNG_RKP
++	bool "Samsung RKP hook compatibility"
++	depends on KSU && ARM64 && KPROBES && KRETPROBES
++	default y
++	help
++	  Use kprobe-based syscall fallbacks when Samsung RKP prevents live
++	  writes to the syscall table.
++
++config KSU_SAMSUNG_DEFEX
++	bool "Samsung DEFEX credential compatibility"
++	depends on KSU && ARM64 && KPROBES
++	default y
++	help
++	  Synchronize Samsung DEFEX task credentials after a KernelSU UID
++	  transition and bypass duplicate enforcement for KernelSU tasks.
++
++config KSU_SAMSUNG_NO_PATCH_TEXT
++	bool "Disable live kernel text/data patching on Samsung EL2"
++	depends on KSU && ARM64
++	default n
++	help
++	  Return -EOPNOTSUPP from KernelSU's live patch helper. Enable on
++	  Samsung kernels whose EL2 protection rejects fixmap writes.
++
  menu "KernelSU - SUSFS"
  config KSU_SUSFS
  	bool "KernelSU addon - SUSFS"
-@@ -51,18 +59,16 @@
+@@ -51,18 +91,16 @@
  	  - Allow hiding the user-defined path and all its sub-paths from various system calls.
  	  - Use "add_sus_path_loop" instead of "add_sus_path" if the user-defined path is frequently modified.
  	  - Use with cautious as it may cause performance loss and will be vulnerable to side channel attacks,
@@ -48,7 +80,7 @@
  
  config KSU_SUSFS_SUS_KSTAT
  	bool "Enable to spoof suspicious kstat"
-@@ -70,7 +76,7 @@
+@@ -70,7 +108,7 @@
  	default y
  	help
  	  - Allow spoofing the kstat of user-defined file/directory.
@@ -57,7 +89,7 @@
  
  config KSU_SUSFS_SPOOF_UNAME
  	bool "Enable to spoof uname"
-@@ -111,7 +117,7 @@
+@@ -111,7 +149,7 @@
  	  - Allow redirecting a target path to be opened with another user-defined path.
  	  - Both target path and redirected path must be existed before they can be added to the kernel.
  	  - Users have to take care of the selinux permission of both target path and redirected path by themselves.
@@ -66,7 +98,7 @@
  	  - Effective only on processes with pre-defined uid scheme.
  
  config KSU_SUSFS_SUS_MAP
-@@ -123,9 +129,7 @@
+@@ -123,8 +161,7 @@
  	  - It does NOT support hiding for anon memory.
  	  - It does NOT hide any inline hooks or plt hooks cause by the injected library itself.
  	  - It may not be able to evade detections by apps that implement a good injection detection.
@@ -75,14 +107,13 @@
 +	  - Effective only on zygote spawned umounted user app process >= 10000.
  
  endmenu
--
- endmenu
+ 
 
 --- a/kernel/Makefile
 +++ b/kernel/Makefile
-@@ -33,14 +33,4 @@
+@@ -36,14 +36,4 @@
  check-format:
- 	find . \( -name "*.c" -o -name "*.h" \) -print0 | xargs -0 clang-format --dry-run --Werror
+ 	$(FORMAT_FILES) | xargs -0 clang-format --dry-run --Werror
  
 -## For susfs stuff ##
 -ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
@@ -969,21 +1000,21 @@
 +
 +    context_write = &selinux_write_op[SEL_CONTEXT];
 +    pr_info("selinux_hide: context_write: 0x%lx [%pSb]\n", (unsigned long)*context_write, *context_write);
-+    write_op_fn my = my_write_context;
 +    orig_context_write = *context_write;
++    write_op_fn my = my_write_context;
 +    ret = ksu_patch_text(context_write, &my, sizeof(my), KSU_PATCH_TEXT_FLUSH_DCACHE);
 +    if (ret) {
-+        pr_err("selinux_hide: init: patch_text context_write err: %d\n", ret);
++        pr_err("selinux_hide: init: hook context_write err: %d\n", ret);
 +        goto unhook;
 +    }
 +
 +    access_write = &selinux_write_op[SEL_ACCESS];
 +    pr_info("selinux_hide: access_write: 0x%lx [%pSb]\n", (unsigned long)*access_write, *access_write);
-+    my = my_write_access;
 +    orig_access_write = *access_write;
++    my = my_write_access;
 +    ret = ksu_patch_text(access_write, &my, sizeof(my), KSU_PATCH_TEXT_FLUSH_DCACHE);
 +    if (ret) {
-+        pr_err("selinux_hide: init: patch_text access_write err: %d\n", ret);
++        pr_err("selinux_hide: init: hook access_write err: %d\n", ret);
 +        goto unhook;
 +    }
 +
@@ -1060,11 +1091,11 @@
 +        }
 +        sel_open_handle_status_slot = &ops->open;
 +    }
-+    sel_open_handle_status_fn new_fn = my_sel_open_handle_status;
 +    orig_sel_open_handle_status = *sel_open_handle_status_slot;
++    sel_open_handle_status_fn new_fn = my_sel_open_handle_status;
 +    int ret = ksu_patch_text(sel_open_handle_status_slot, &new_fn, sizeof(new_fn), KSU_PATCH_TEXT_FLUSH_DCACHE);
 +    if (ret) {
-+        pr_err("selinux_hide: init: patch_text sel_open_handle_status err: %d\n", ret);
++        pr_err("selinux_hide: init: hook sel_open_handle_status err: %d\n", ret);
 +        sel_open_handle_status_slot = NULL;
 +        orig_sel_open_handle_status = NULL;
 +    }
@@ -1845,6 +1876,106 @@
 +
 +#endif
 
+--- a/kernel/hook/arm64/patch_memory.c
++++ b/kernel/hook/arm64/patch_memory.c
+@@ -192,7 +192,12 @@
+ 
+ int ksu_patch_text(void *dst, void *src, size_t len, int flags)
+ {
+-    struct patch_text_info info = {
++#ifdef CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT
++	pr_warn("live patching disabled on Samsung EL2: dst=0x%lx len=%zu flags=0x%x\n",
++		(unsigned long)dst, len, flags);
++	return -EOPNOTSUPP;
++#else
++	struct patch_text_info info = {
+         .dst = dst,
+         .src = src,
+         .len = len,
+@@ -200,7 +205,8 @@
+         .flags = flags,
+     };
+ 
+-    return stop_machine(ksu_patch_text_cb, &info, cpu_online_mask);
++	return stop_machine(ksu_patch_text_cb, &info, cpu_online_mask);
++#endif
+ }
+ 
+ /*
+
+--- a/kernel/hook/arm64/syscall_hook.c
++++ b/kernel/hook/arm64/syscall_hook.c
+@@ -49,13 +49,15 @@
+ 
+ // Direct syscall table patching: overwrite syscall_table[nr] with fn,
+ // save original to *old, and record for restoration at module exit.
+-void ksu_syscall_table_hook(int nr, syscall_fn_t fn, syscall_fn_t *old)
++int ksu_syscall_table_hook(int nr, syscall_fn_t fn, syscall_fn_t *old)
+ {
++	int ret;
++
+     if (ksu_syscall_table == NULL)
+-        return;
++        return -ENOENT;
+     if (nr < 0 || nr >= __NR_syscalls) {
+         pr_info("invalid nr: %d\n", nr);
+-        return;
++        return -EINVAL;
+     }
+ 
+     mutex_lock(&hooked_entries_lock);
+@@ -73,21 +75,27 @@
+             break;
+         }
+     }
++    if (!found && hooked_count >= ARRAY_SIZE(hooked_entries)) {
++        pr_warn("hooked_entries full, cannot track syscall %d for restoration\n",
++                nr);
++        mutex_unlock(&hooked_entries_lock);
++        return -ENOSPC;
++    }
++
++    ret = patch_syscall_table(nr, fn);
++    if (ret) {
++        mutex_unlock(&hooked_entries_lock);
++        return ret;
++    }
++
+     if (!found) {
+-        if (hooked_count < ARRAY_SIZE(hooked_entries)) {
+             hooked_entries[hooked_count].nr = nr;
+             hooked_entries[hooked_count].orig = orig;
+             hooked_count++;
+-        } else {
+-            pr_warn(
+-                "hooked_entries full, cannot track syscall %d for restoration\n",
+-                nr);
+-        }
+     }
+ 
+-    patch_syscall_table(nr, fn);
+-
+     mutex_unlock(&hooked_entries_lock);
++    return 0;
+ }
+ 
+ // Restore syscall_table[nr] to its original value and remove from tracking list.
+@@ -218,9 +226,12 @@
+         return;
+     }
+ 
++    if (ksu_syscall_table_hook(ni_slot, (syscall_fn_t)ksu_syscall_dispatcher,
++                               NULL)) {
++        pr_warn("dispatcher slot is protected; using architecture fallback hooks\n");
++        return;
++    }
+     ksu_dispatcher_nr = ni_slot;
+-    ksu_syscall_table_hook(ksu_dispatcher_nr,
+-                           (syscall_fn_t)ksu_syscall_dispatcher, NULL);
+     pr_info("dispatcher installed at slot %d\n", ksu_dispatcher_nr);
+ }
+ 
+
 --- a/kernel/hook/setuid_hook.h
 +++ b/kernel/hook/setuid_hook.h
 @@ -7,4 +7,11 @@
@@ -1862,7 +1993,7 @@
 
 --- a/kernel/hook/syscall_event_bridge.c
 +++ b/kernel/hook/syscall_event_bridge.c
-@@ -45,70 +45,70 @@
+@@ -47,79 +47,78 @@
          ksu_clear_task_tracepoint_flag_if_needed(current);
      }
  
@@ -1918,6 +2049,15 @@
 -        }
 -    }
 -
+-    /*
+-     * Newer Android releases' init execs selinux_setup with execveat()
+-     * rather than execve(). Only an AT_EMPTY_PATH exec of an fd has no
+-     * path for preinit to swap.
+-     */
+-    if (unlikely(current->pid == 1) && (!execveat || !(PT_REGS_PARM5(regs) & AT_EMPTY_PATH)) &&
+-        ksu_preinit_handle_execve(filename_user, argv_user, orig_nr, (struct pt_regs *)regs, &ret))
+-        return ret;
+-
 -    if (current_euid().val == 0)
 -        pending_root_execve = ksu_sulog_capture_root_execve(*filename_user, argv_user, GFP_KERNEL);
 -
@@ -1953,6 +2093,14 @@
 +			ksu_execve_hook_ksud(regs);
 +		}
 +	}
++	/*
++	 * Newer Android releases' init execs selinux_setup with execveat()
++	 * rather than execve(). Only an AT_EMPTY_PATH exec of an fd has no
++	 * path for preinit to swap.
++	 */
++	if (unlikely(current->pid == 1) && (!execveat || !(PT_REGS_PARM5(regs) & AT_EMPTY_PATH)) &&
++	    ksu_preinit_handle_execve(filename_user, argv_user, orig_nr, (struct pt_regs *)regs, &ret))
++		return ret;
 +
 +	if (current_euid().val == 0)
 +		pending_root_execve = ksu_sulog_capture_root_execve(*filename_user, argv_user, GFP_KERNEL);
@@ -1977,7 +2125,7 @@
  }
  
  long __nocfi ksu_hook_execve(int orig_nr, const struct pt_regs *regs)
-@@ -129,6 +129,10 @@
+@@ -140,6 +139,10 @@
      if (ret < 0)
          return ret;
  
@@ -1988,6 +2136,114 @@
 +#endif
      return ret;
  }
+
+--- a/kernel/hook/syscall_hook.h
++++ b/kernel/hook/syscall_hook.h
+@@ -39,7 +39,7 @@
+ // Saves the original handler to *@old (if non-NULL) and records the entry
+ // for restoration at module exit. Use this for boot-time hooks that replace
+ // a real syscall entry (e.g. ksud hooking __NR_execve/__NR_read/__NR_fstat).
+-void ksu_syscall_table_hook(int nr, syscall_fn_t fn, syscall_fn_t *old);
++int ksu_syscall_table_hook(int nr, syscall_fn_t fn, syscall_fn_t *old);
+ 
+ // Restore syscall_table[@nr] to its original value recorded by
+ // ksu_syscall_table_hook(), and remove the entry from the tracking list.
+
+--- a/kernel/hook/syscall_hook_manager.c
++++ b/kernel/hook/syscall_hook_manager.c
+@@ -23,6 +23,7 @@
+ #include "hook/riscv64/syscall_regs.h"
+ #endif
+ 
++
+ #ifdef CONFIG_KRETPROBES
+ 
+ static struct kretprobe *init_kretprobe(const char *name, kretprobe_handler_t handler)
+
+--- a/kernel/hook/tp_marker.c
++++ b/kernel/hook/tp_marker.c
+@@ -103,7 +103,7 @@
+             pr_info("tp_marker: unmark process: pid:%d, uid: %d, comm:%s\n",
+                     t->pid, uid, t->comm);
+         }
+-        put_cred(cred);
++		ksu_put_cred(cred);
+     }
+     read_unlock(&tasklist_lock);
+ }
+
+--- a/kernel/hook/x86_64/syscall_hook.c
++++ b/kernel/hook/x86_64/syscall_hook.c
+@@ -54,13 +54,15 @@
+ 
+ // Direct syscall table patching: overwrite syscall_table[nr] with fn,
+ // save original to *old, and record for restoration at module exit.
+-void ksu_syscall_table_hook(int nr, sys_call_ptr_t fn, sys_call_ptr_t *old)
++int ksu_syscall_table_hook(int nr, sys_call_ptr_t fn, sys_call_ptr_t *old)
+ {
++	int ret;
++
+     if (ksu_syscall_table == NULL)
+-        return;
++        return -ENOENT;
+     if (nr < 0 || nr >= __NR_syscalls) {
+         pr_info("invalid nr: %d\n", nr);
+-        return;
++        return -EINVAL;
+     }
+ 
+     mutex_lock(&hooked_entries_lock);
+@@ -78,21 +80,27 @@
+             break;
+         }
+     }
++    if (!found && hooked_count >= ARRAY_SIZE(hooked_entries)) {
++        pr_warn("hooked_entries full, cannot track syscall %d for restoration\n",
++                nr);
++        mutex_unlock(&hooked_entries_lock);
++        return -ENOSPC;
++    }
++
++    ret = patch_syscall_table(nr, fn);
++    if (ret) {
++        mutex_unlock(&hooked_entries_lock);
++        return ret;
++    }
++
+     if (!found) {
+-        if (hooked_count < ARRAY_SIZE(hooked_entries)) {
+             hooked_entries[hooked_count].nr = nr;
+             hooked_entries[hooked_count].orig = orig;
+             hooked_count++;
+-        } else {
+-            pr_warn(
+-                "hooked_entries full, cannot track syscall %d for restoration\n",
+-                nr);
+-        }
+     }
+ 
+-    patch_syscall_table(nr, fn);
+-
+     mutex_unlock(&hooked_entries_lock);
++    return 0;
+ }
+ 
+ // Restore syscall_table[nr] to its original value and remove from tracking list.
+@@ -326,9 +334,12 @@
+         return;
+     }
+ 
++    if (ksu_syscall_table_hook(ni_slot,
++                               (sys_call_ptr_t)ksu_syscall_dispatcher, NULL)) {
++        pr_warn("dispatcher slot is protected; syscall dispatcher unavailable\n");
++        return;
++    }
+     ksu_dispatcher_nr = ni_slot;
+-    ksu_syscall_table_hook(ksu_dispatcher_nr,
+-                           (sys_call_ptr_t)ksu_syscall_dispatcher, NULL);
+     pr_info("dispatcher installed at slot %d\n", ksu_dispatcher_nr);
+ }
+ 
 
 --- a/kernel/include/ksu.h
 +++ b/kernel/include/ksu.h
@@ -2107,6 +2363,15 @@
      if (test_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT)) {
          pr_warn("TIF_KSU_DISABLE_ESCAPE_WITH_ROOT found, don't escape!\n");
          goto out_abort_creds;
+@@ -179,7 +215,7 @@
+     setup_groups(profile, cred);
+     setup_selinux(profile->selinux_domain, cred);
+ 
+-    commit_creds(cred);
++	commit_creds(cred);
+ 
+     if (likely(test_thread_flag(TIF_SECCOMP)))
+         disable_seccomp();
 @@ -188,6 +224,12 @@
          set_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT);
      }
@@ -2120,11 +2385,8 @@
      setup_mount_ns(profile->namespaces);
      ksu_put_root_profile(profile);
      return 0;
-@@ -209,6 +251,22 @@
+@@ -212,3 +254,20 @@
  
-     setup_selinux(KERNEL_SU_CONTEXT, cred);
-     commit_creds(cred);
--
      return 0;
  }
 +
@@ -2174,6 +2436,47 @@
  
  typedef int (*ksu_feature_get_t)(u64 *value);
  typedef int (*ksu_feature_set_t)(u64 value);
+
+--- a/kernel/preinit/preinit.c
++++ b/kernel/preinit/preinit.c
+@@ -29,6 +29,10 @@
+ 
+ void __init ksu_preinit_init(void)
+ {
++#if !defined(CONFIG_KPROBES) || defined(CONFIG_KSU_SUSFS)
++    pr_info("preinit: unsupported under current hook provider\n");
++    return;
++#else
+     size_t size = ksu_preinit_runner_end - ksu_preinit_runner_start;
+     struct file *file;
+     loff_t pos = 0;
+@@ -54,6 +58,7 @@
+ 
+     ksu_preinit_file = file;
+     pr_info("preinit: runner staged (%zu bytes)\n", size);
++#endif
+ }
+ 
+ bool ksu_preinit_enabled_param(void)
+@@ -76,6 +81,7 @@
+     ksu_preinit_release();
+ }
+ 
++#if defined(CONFIG_KPROBES) && !defined(CONFIG_KSU_SUSFS)
+ static bool is_selinux_setup(const char __user *const __user *argv_user)
+ {
+     static const char expected[] = "selinux_setup";
+@@ -157,3 +163,10 @@
+     }
+     return true;
+ }
++#else
++bool ksu_preinit_handle_execve(const char __user **filename_user, const char __user *const __user *argv_user,
++                               int orig_nr, struct pt_regs *regs, long *ret)
++{
++    return false;
++}
++#endif
 
 --- a/kernel/runtime/boot_event.c
 +++ b/kernel/runtime/boot_event.c
@@ -2261,446 +2564,6 @@
  #endif
 +
 +#endif
-
---- a/kernel/runtime/ksud_integration.c
-+++ b/kernel/runtime/ksud_integration.c
-@@ -11,6 +11,7 @@
- #include <linux/fs.h>
- #include <linux/version.h>
- #include <linux/input-event-codes.h>
-+#include <linux/kprobes.h>
- #include <linux/printk.h>
- #include <linux/types.h>
- #include <linux/uaccess.h>
-@@ -26,9 +27,16 @@
- #include "runtime/ksud_boot.h"
- #include "policy/feature.h"
- #include "selinux/selinux.h"
-+#include "hook/syscall_hook.h"
-+#include "hook/syscall_event_bridge.h"
- 
-+#include "linux/jump_label.h"
-+
-+#ifdef CONFIG_KSU_SUSFS
- DEFINE_STATIC_KEY_TRUE(ksu_is_init_rc_hook_enabled);
- DEFINE_STATIC_KEY_TRUE(ksu_is_input_hook_enabled);
-+#endif
-+
- DEFINE_STATIC_KEY_TRUE(is_init_second_stage_not_executed);
- DEFINE_STATIC_KEY_TRUE(is_first_zygote);
- 
-@@ -52,25 +60,32 @@
-     "\n";
- // clang-format on
- 
--static const char __user *get_user_arg_ptr(struct user_arg_ptr argv, int nr)
-+#ifndef CONFIG_KSU_SUSFS
-+static void stop_init_rc_hook();
-+static void stop_execve_hook();
-+#endif
-+
-+static struct work_struct stop_input_hook_work;
-+
-+static const char __user *get_user_arg_ptr_local(struct user_arg_ptr argv, int nr)
- {
--	const char __user *native;
-+    const char __user *native;
- 
- #ifdef CONFIG_COMPAT
--	if (unlikely(argv.is_compat)) {
--		compat_uptr_t compat;
-+    if (unlikely(argv.is_compat)) {
-+        compat_uptr_t compat;
- 
--		if (get_user(compat, argv.ptr.compat + nr))
--			return ERR_PTR(-EFAULT);
-+        if (get_user(compat, argv.ptr.compat + nr))
-+            return ERR_PTR(-EFAULT);
- 
--		return compat_ptr(compat);
--	}
-+        return compat_ptr(compat);
-+    }
- #endif
- 
--	if (get_user(native, argv.ptr.native + nr))
--		return ERR_PTR(-EFAULT);
-+    if (get_user(native, argv.ptr.native + nr))
-+        return ERR_PTR(-EFAULT);
- 
--	return native;
-+    return native;
- }
- 
- /*
-@@ -88,7 +103,7 @@
- 
-     if (argv.ptr.native != NULL) {
-         for (;;) {
--            const char __user *p = get_user_arg_ptr(argv, i);
-+            const char __user *p = get_user_arg_ptr_local(argv, i);
- 
-             if (!p)
-                 break;
-@@ -116,21 +131,27 @@
-     if (argc <= index)
-         return false;
- 
--    p = get_user_arg_ptr(argv, index);
-+    p = get_user_arg_ptr_local(argv, index);
-     if (!p || IS_ERR(p))
-         goto fail;
- 
-+    #ifdef CONFIG_KSU_SUSFS
-     if (strncpy_from_user(buf, p, buf_len) <= 0)
-         goto fail;
-+    #else
-+    if (strncpy_from_user_nofault(buf, p, buf_len) <= 0)
-+        goto fail;
-+    #endif
- 
-     buf[buf_len - 1] = '\0';
-+
-     return !strcmp(buf, expected);
- 
- fail:
--    pr_err("check_argv failed\n");
-     return false;
- }
- 
-+#ifdef CONFIG_KSU_SUSFS
- extern int ksu_handle_execveat_init(struct filename *filename, struct user_arg_ptr *argv_user, struct user_arg_ptr *envp_user);
- 
- // IMPORTANT NOTE: the call from execve_handler_pre WON'T provided correct value for envp and flags in GKI version
-@@ -175,6 +196,8 @@
-             if (check_argv(*argv, 1, "-Xzygote", buf, sizeof(buf))) {
-                 pr_info("exec zygote, /data prepared, second_stage: %d\n", !static_key_enabled(&is_init_second_stage_not_executed));
-                 on_post_fs_data();
-+                cache_sid();
-+                setup_ksu_cred();
-                 static_branch_disable(&is_first_zygote);
-             }
-         }
-@@ -182,6 +205,44 @@
- 
-     return 0;
- }
-+#else
-+void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
-+{
-+    static const char app_process[] = "/system/bin/app_process";
-+
-+    /* This applies to versions Android 10+ */
-+    static const char system_bin_init[] = "/system/bin/init";
-+
-+    if (static_branch_unlikely(&is_init_second_stage_not_executed)) {
-+        // https://cs.android.com/android/platform/superproject/+/android-16.0.0_r2:system/core/init/main.cpp;l=77
-+        if (unlikely(!memcmp(path, system_bin_init, sizeof(system_bin_init) - 1) && argv)) {
-+            char buf[16];
-+            if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
-+                pr_info("/system/bin/init second_stage executed\n");
-+                ksu_selinux_hide_handle_second_stage();
-+                apply_kernelsu_rules();
-+                cache_sid();
-+                setup_ksu_cred();
-+                // after apply_kernelsu_rules, so that selinux_hide has its sepolicy backup
-+                ksu_feature_apply_forced();
-+                static_branch_disable(&is_init_second_stage_not_executed);
-+            }
-+        }
-+    }
-+
-+    if (static_branch_unlikely(&is_first_zygote)) {
-+        if (unlikely(!memcmp(path, app_process, sizeof(app_process) - 1) && argv)) {
-+            char buf[16];
-+            if (check_argv(*argv, 1, "-Xzygote", buf, sizeof(buf))) {
-+                pr_info("exec zygote, /data prepared, second_stage: %d\n", !static_key_enabled(&is_init_second_stage_not_executed));
-+                on_post_fs_data();
-+                static_branch_disable(&is_first_zygote);
-+                ksu_stop_ksud_execve_hook();
-+            }
-+        }
-+    }
-+}
-+#endif
- 
- static ssize_t (*orig_read)(struct file *, char __user *, size_t, loff_t *);
- static ssize_t (*orig_read_iter)(struct kiocb *, struct iov_iter *);
-@@ -285,7 +346,6 @@
- // https://cs.android.com/android/platform/superproject/main/+/main:system/libbase/file.cpp;l=241-243;drc=61197364367c9e404c7da6900658f1b16c42d0da
- // The system will read init.rc file until EOF, whenever read() returns 0,
- // so we begin append ksu rc when we meet EOF.
--
- static ssize_t read_proxy(struct file *file, char __user *buf, size_t count, loff_t *pos)
- {
-     ssize_t ret = 0;
-@@ -438,16 +498,20 @@
-         return;
-     }
-     rc_hooked = true;
--
-+#ifdef CONFIG_KSU_SUSFS
-     if (static_key_enabled(&ksu_is_init_rc_hook_enabled)) {
-         static_branch_disable(&ksu_is_init_rc_hook_enabled);
-         pr_info("ksu_init_rc_hook is disabled\n");
-     }
-+#else
-+    stop_init_rc_hook();
-+#endif
- 
-     // now we can sure that the init process is reading
-     // `/system/etc/init/init.rc`
- 
-     load_module_rc_once();
-+
-     pr_info("read init.rc, comm: %s, rc_count: %zu, module_rc: %zu\n", current->comm, ksu_rc_len, module_rc_len);
- 
-     // Now we need to proxy the read and modify the result!
-@@ -476,6 +540,24 @@
-     fput(file);
- }
- 
-+#ifdef CONFIG_KSU_SUSFS
-+void ksu_handle_vfs_fstat(int fd, loff_t *kstat_size_ptr)
-+{
-+    loff_t new_size = *kstat_size_ptr + ksu_rc_len;
-+    struct file *file = fget(fd);
-+
-+    if (!file)
-+        return;
-+
-+    if (is_init_rc(file)) {
-+        pr_info("stat init.rc");
-+        pr_info("adding ksu_rc_len: %lld -> %lld", *kstat_size_ptr, new_size);
-+        *kstat_size_ptr = new_size;
-+    }
-+    fput(file);
-+}
-+#endif
-+
- static unsigned int volumedown_pressed_count = 0;
- 
- static bool is_volumedown_enough(unsigned int count)
-@@ -485,17 +567,29 @@
- 
- int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code, int *value)
- {
-+#ifdef CONFIG_KSU_SUSFS
-+    if (!static_branch_unlikely(&ksu_is_input_hook_enabled))
-+        return 0;
-+#endif
-+
-     if (*type == EV_KEY && *code == KEY_VOLUMEDOWN) {
-         int val = *value;
-         pr_info("KEY_VOLUMEDOWN val: %d\n", val);
-         if (val) {
--	    // - We cannot call static_branch_disable() here as we are within the
--	    //   spinlock section, which is not sleepable.
-+#ifdef CONFIG_KSU_SUSFS
-+            // - We cannot call static_branch_disable() here as we are within the
-+            //   spinlock section, which is not sleepable.
-             // - So if volumedown is enough, just do nothing until it gets disabled by on_post_fs_data().
-             if (is_volumedown_enough(volumedown_pressed_count))
-                 return 0;
-+#endif
-             // key pressed, count it
-             volumedown_pressed_count += 1;
-+#ifndef CONFIG_KSU_SUSFS
-+            if (is_volumedown_enough(volumedown_pressed_count)) {
-+                ksu_stop_input_hook_runtime();
-+            }
-+#endif
-         }
-     }
- 
-@@ -510,11 +604,19 @@
-         return true;
-     }
- 
-+    if (ksu_late_loaded) {
-+        return false;
-+    }
-+
-     // stop hook first!
-+#ifdef CONFIG_KSU_SUSFS
-     if (static_key_enabled(&ksu_is_input_hook_enabled)) {
-         static_branch_disable(&ksu_is_input_hook_enabled);
-         pr_info("ksu_input_hook is disabled\n");
-     }
-+#else
-+    ksu_stop_input_hook_runtime();
-+#endif
- 
-     pr_info("volumedown_pressed_count: %d\n", volumedown_pressed_count);
-     if (is_volumedown_enough(volumedown_pressed_count)) {
-@@ -527,13 +629,69 @@
-     return false;
- }
- 
--void ksu_handle_vfs_fstat(int fd, loff_t *kstat_size_ptr)
-+static void ksu_execve_hook_ksud_common(const char __user *filename_user, const char __user *const __user *argv_user)
- {
--    loff_t orig_size = *kstat_size_ptr;
--    size_t extra = 0;
-+    struct user_arg_ptr argv = { .ptr.native = argv_user };
-+    char path[32];
-+    long ret;
-+    unsigned long addr;
-+    const char __user *fn;
-+
-+    if (!filename_user)
-+        return;
-+
-+    addr = untagged_addr((unsigned long)filename_user);
-+    fn = (const char __user *)addr;
-+
-+    memset(path, 0, sizeof(path));
-+    ret = strncpy_from_user(path, fn, 32);
-+    if (ret < 0) {
-+        pr_err("Access filename failed for execve_handler_pre\n");
-+        return;
-+    }
-+
-+#ifdef CONFIG_KSU_SUSFS
-+    // Not supported in hook mode for SuSFS
-+#else
-+    ksu_handle_execveat_ksud(path, &argv);
-+#endif
-+}
-+
-+void ksu_execve_hook_ksud(const struct pt_regs *regs)
-+{
-+    const char __user *filename_user = (const char __user *)PT_REGS_SYSCALL_PARM1(regs);
-+    const char __user *const __user *argv_user = (const char __user *const __user *)PT_REGS_PARM2(regs);
-+
-+    ksu_execve_hook_ksud_common(filename_user, argv_user);
-+}
-+
-+void ksu_execveat_hook_ksud(const struct pt_regs *regs)
-+{
-+    const char __user *filename_user = (const char __user *)PT_REGS_PARM2(regs);
-+    const char __user *const __user *argv_user = (const char __user *const __user *)PT_REGS_PARM3(regs);
-+
-+    ksu_execve_hook_ksud_common(filename_user, argv_user);
-+}
-+
-+#ifndef CONFIG_KSU_SUSFS
-+static long (*orig_sys_read)(const struct pt_regs *regs);
-+static long ksu_sys_read(const struct pt_regs *regs)
-+{
-+    unsigned int fd = PT_REGS_SYSCALL_PARM1(regs);
-+
-+    ksu_handle_sys_read(fd, NULL, NULL);
-+    return orig_sys_read(regs);
-+}
-+
-+static long (*orig_sys_fstat)(const struct pt_regs *regs);
-+static long ksu_sys_fstat(const struct pt_regs *regs)
-+{
-+    unsigned int fd = PT_REGS_SYSCALL_PARM1(regs);
-+    void __user *statbuf = (void __user *)PT_REGS_PARM2(regs);
-     bool is_rc = false;
--    struct file *file = fget(fd);
-+    long ret;
- 
-+    struct file *file = fget(fd);
-     if (file) {
-         if (is_init_rc(file)) {
-             pr_info("stat init.rc");
-@@ -543,20 +701,90 @@
-         fput(file);
-     }
- 
-+    ret = orig_sys_fstat(regs);
-+
-     if (is_rc) {
--        extra = ksu_rc_len + module_rc_len;
--        *kstat_size_ptr = orig_size + extra;
--        pr_info("adding rc len: %lld -> %lld (static=%zu module=%zu)", orig_size, *kstat_size_ptr, ksu_rc_len, module_rc_len);
-+        void __user *st_size_ptr = statbuf + offsetof(struct stat, st_size);
-+        long size, new_size;
-+        size_t extra = ksu_rc_len + module_rc_len;
-+        if (!copy_from_user_nofault(&size, st_size_ptr, sizeof(long))) {
-+            new_size = size + extra;
-+            pr_info("adding rc len: %ld -> %ld (static=%zu module=%zu)", size, new_size, ksu_rc_len, module_rc_len);
-+            if (!copy_to_user_nofault(st_size_ptr, &new_size, sizeof(long))) {
-+                pr_info("added rc len");
-+            } else {
-+                pr_err("add rc len failed: statbuf 0x%lx", (unsigned long)st_size_ptr);
-+            }
-+        } else {
-+            pr_err("read statbuf 0x%lx failed", (unsigned long)st_size_ptr);
-+        }
-+    }
-+
-+    return ret;
-+}
-+
-+static int input_handle_event_handler_pre(struct kprobe *p, struct pt_regs *regs)
-+{
-+    unsigned int *type = (unsigned int *)&PT_REGS_PARM2(regs);
-+    unsigned int *code = (unsigned int *)&PT_REGS_PARM3(regs);
-+    int *value = (int *)&PT_REGS_CCALL_PARM4(regs);
-+    return ksu_handle_input_handle_event(type, code, value);
-+}
-+
-+static struct kprobe input_event_kp = {
-+    .symbol_name = "input_event",
-+    .pre_handler = input_handle_event_handler_pre,
-+};
-+
-+static void do_stop_input_hook(struct work_struct *work)
-+{
-+    unregister_kprobe(&input_event_kp);
-+}
-+
-+static void stop_init_rc_hook()
-+{
-+    ksu_syscall_table_unhook(__NR_read);
-+    ksu_syscall_table_unhook(__NR_fstat);
-+    pr_info("unregister init_rc syscall hook\n");
-+}
-+
-+void ksu_stop_input_hook_runtime(void)
-+{
-+    static bool input_hook_stopped = false;
-+    if (input_hook_stopped) {
-+        return;
-     }
-+    input_hook_stopped = true;
-+    bool ret = schedule_work(&stop_input_hook_work);
-+    pr_info("unregister input kprobe: %d!\n", ret);
- }
-+#endif
- 
- // ksud: module support
- void __init ksu_ksud_init()
- {
-+#if !defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KPROBES)
-+    int ret;
-+
-+    ksu_syscall_table_hook(__NR_read, ksu_sys_read, &orig_sys_read);
-+    ksu_syscall_table_hook(__NR_fstat, ksu_sys_fstat, &orig_sys_fstat);
-+
-+    ret = register_kprobe(&input_event_kp);
-+    pr_info("ksud: input_event_kp: %d\n", ret);
-+
-+    INIT_WORK(&stop_input_hook_work, do_stop_input_hook);
-+#endif
- }
- 
- void __exit ksu_ksud_exit()
- {
-+#if !defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KPROBES)
-+    // TODO:
-+    // this should be done before unregister vfs_read_kp
-+    // stop_init_rc_hook();
-+    unregister_kprobe(&input_event_kp);
-+#endif
-+
-     if (module_rc_buf) {
-         free_module_rc();
-     }
 
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c

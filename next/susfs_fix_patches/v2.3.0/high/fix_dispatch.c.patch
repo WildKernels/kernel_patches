@@ -1,6 +1,6 @@
 --- a/kernel/supercall/dispatch.c
 +++ b/kernel/supercall/dispatch.c
-@@ -5,8 +5,13 @@
+@@ -7,8 +7,13 @@
  #include <linux/uaccess.h>
  #include <linux/version.h>
  #include <linux/thread_info.h>
@@ -14,7 +14,7 @@
  #include "uapi/supercall.h"
  #include "supercall/internal.h"
  #include "arch.h" // IWYU pragma: keep
-@@ -19,6 +24,7 @@
+@@ -21,6 +26,7 @@
  #include "manager/manager_identity.h"
  #include "selinux/selinux.h"
  #include "infra/file_wrapper.h"
@@ -22,7 +22,7 @@
  #include "policy/app_profile.h"
  #include "sulog/event.h"
  #include "sulog/fd.h"
-@@ -115,8 +121,12 @@
+@@ -123,8 +129,12 @@
          services_started = false;
          if (!post_fs_data_lock) {
              post_fs_data_lock = true;
@@ -37,7 +37,7 @@
          }
          break;
      }
-@@ -124,15 +134,31 @@
+@@ -132,15 +142,31 @@
          static bool boot_complete_lock = false;
          if (!boot_complete_lock) {
              boot_complete_lock = true;
@@ -71,7 +71,7 @@
          break;
      }
      case EVENT_SERVICES: {
-@@ -380,6 +406,9 @@
+@@ -388,6 +414,9 @@
      ret = ksu_set_app_profile(&cmd.profile);
      if (!ret) {
          ksu_persistent_allow_list();
@@ -81,7 +81,7 @@
      }
      return ret;
  }
-@@ -462,32 +491,69 @@
+@@ -470,32 +499,69 @@
      }
  
      switch (cmd.operation) {
@@ -172,7 +172,7 @@
      }
      if (copy_to_user(arg, &cmd, sizeof(cmd))) {
          pr_err("manage_mark: copy_to_user failed\n");
-@@ -497,87 +563,6 @@
+@@ -505,87 +571,6 @@
      return 0;
  }
  
@@ -260,7 +260,7 @@
  static int do_nuke_ext4_sysfs(void __user *arg)
  {
      struct ksu_nuke_ext4_sysfs_cmd cmd;
-@@ -770,11 +755,17 @@
+@@ -778,11 +763,17 @@
  {
      struct ksu_get_hook_mode_cmd cmd = {0};
  
@@ -278,7 +278,7 @@
  
      if (copy_to_user(arg, &cmd, sizeof(cmd))) {
          pr_err("get_hook_mode: copy_to_user failed\n");
-@@ -1071,3 +1062,108 @@
+@@ -1164,3 +1155,108 @@
      }
      up_write(&mount_list_lock);
  }

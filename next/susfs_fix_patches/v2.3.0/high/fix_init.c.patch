@@ -19,9 +19,9 @@
  #include "runtime/ksud.h"
  #include "runtime/ksud_boot.h"
  #include "supercall/supercall.h"
-@@ -26,6 +32,13 @@
- #include "feature/sulog.h"
+@@ -27,6 +33,13 @@
  #include "infra/symbol_resolver.h"
+ #include "preinit/preinit.h"
  
 +#ifdef CONFIG_KSU_SUSFS
 +#include <linux/susfs.h>
@@ -33,7 +33,7 @@
  #if defined(__x86_64__) && !defined(CONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER)
  #include <asm/cpufeature.h>
  #include <linux/version.h>
-@@ -72,6 +85,7 @@
+@@ -73,6 +86,7 @@
  #endif
  
  struct cred *ksu_cred;
@@ -41,10 +41,12 @@
  
  #ifdef CONFIG_KSU_DEBUG
  bool allow_shell = true;
-@@ -95,6 +109,10 @@
+@@ -96,6 +110,12 @@
  #else
  	pr_info("welcome to KernelSU version " __stringify(KERNEL_SU_VERSION) "\n");
  #endif
++
++
 +#ifdef CONFIG_KSU_SUSFS
 +	susfs_init();
 +	ksu_module_blacklist_add("susfs_guard_lkm");
@@ -52,7 +54,7 @@
  #if defined(__x86_64__) && !defined(CONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER)
      // If the kernel has the hardening patch, X86_FEATURE_INDIRECT_SAFE must be set
      if (!boot_cpu_has(X86_FEATURE_INDIRECT_SAFE)) {
-@@ -137,7 +155,9 @@
+@@ -138,7 +158,9 @@
  	}
  
  	ksu_init_symbol_resolver();
@@ -62,7 +64,7 @@
  
  	// Block modules early, before vendor modules are loaded in second stage.
  	ksu_module_blacklist_init();
-@@ -145,13 +165,25 @@
+@@ -146,13 +168,25 @@
  	ksu_feature_init();
  	ksu_sulog_init();
  	ksu_adb_root_init();
@@ -88,7 +90,7 @@
  	if (ksu_late_loaded) {
  		pr_info("late load mode, skipping kprobe hooks\n");
  
-@@ -167,7 +199,9 @@
+@@ -168,7 +202,9 @@
  		ksu_allowlist_init();
  		ksu_load_allow_list();
  
@@ -98,7 +100,7 @@
  
  		ksu_throne_tracker_init();
  		ksu_observer_init();
-@@ -184,7 +218,9 @@
+@@ -185,7 +221,9 @@
  		}
  
  	} else {
@@ -108,7 +110,7 @@
  
  		ksu_allowlist_init();
  
-@@ -206,7 +242,9 @@
+@@ -209,7 +247,9 @@
  void __exit kernelsu_exit(void)
  {
  	// Phase 1: Stop all hooks first to prevent new callbacks
@@ -118,7 +120,7 @@
  
  	ksu_supercalls_exit();
  
-@@ -223,9 +261,19 @@
+@@ -228,9 +268,19 @@
  
  	ksu_allowlist_exit();
  
