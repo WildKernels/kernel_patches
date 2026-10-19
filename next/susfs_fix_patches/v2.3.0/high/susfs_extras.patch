@@ -108,7 +108,6 @@
  
  endmenu
  
-
 --- a/kernel/Makefile
 +++ b/kernel/Makefile
 @@ -36,14 +36,4 @@
@@ -126,7 +125,6 @@
 -endif
 -
  # Keep a new line here!! Because someone may append config
-
 --- a/kernel/extras.c
 +++ b/kernel/extras.c
 @@ -9,6 +9,12 @@
@@ -193,7 +191,6 @@
  	int ret = get_sid();
  	if (ret) {
  		pr_info("avc_spoof/init: sid grab fail!\n");
-
 --- a/kernel/feature/adb_root.c
 +++ b/kernel/feature/adb_root.c
 @@ -10,7 +10,10 @@
@@ -482,7 +479,6 @@
  static int kernel_adb_root_feature_set(u64 value)
  {
      bool enable = value != 0;
-
 --- a/kernel/feature/adb_root.h
 +++ b/kernel/feature/adb_root.h
 @@ -2,7 +2,12 @@
@@ -498,10 +494,9 @@
  
  void ksu_adb_root_init(void);
  
-
 --- a/kernel/feature/module_blacklist.c
 +++ b/kernel/feature/module_blacklist.c
-@@ -42,6 +42,23 @@
+@@ -46,6 +46,23 @@
  };
  module_param_cb(block_modules, &block_modules_param_ops, NULL, 0);
  
@@ -525,7 +520,6 @@
  // Merge the configured names into the kernel's native module_blacklist.
  void __init ksu_module_blacklist_init(void)
  {
-
 --- a/kernel/feature/module_blacklist.h
 +++ b/kernel/feature/module_blacklist.h
 @@ -5,6 +5,7 @@
@@ -536,7 +530,6 @@
  
  // Teardown hook. Intentionally keeps the merged list installed; see the
  // implementation for why the pointer is not restored.
-
 --- a/kernel/feature/selinux_hide.c
 +++ b/kernel/feature/selinux_hide.c
 @@ -1,5 +1,9 @@
@@ -1799,7 +1792,6 @@
 +    avd->allowed = 0xffffffff;
 +    goto out;
 +}
-
 --- a/kernel/feature/selinux_hide.h
 +++ b/kernel/feature/selinux_hide.h
 @@ -1,10 +1,30 @@
@@ -1833,7 +1825,6 @@
 +#endif
 +
  #endif
-
 --- a/kernel/feature/sucompat.h
 +++ b/kernel/feature/sucompat.h
 @@ -2,16 +2,33 @@
@@ -1858,7 +1849,7 @@
  int ksu_handle_stat(int *dfd, struct filename **filename, int *flags);
 -int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
 -                 void *argv_user, void *envp_user,
--                 int *__never_use_flags);
+-                 int *flags);
  
 -#endif
 \ No newline at end of file
@@ -1875,7 +1866,6 @@
 +#endif
 +
 +#endif
-
 --- a/kernel/hook/arm64/patch_memory.c
 +++ b/kernel/hook/arm64/patch_memory.c
 @@ -192,7 +192,12 @@
@@ -1902,7 +1892,6 @@
  }
  
  /*
-
 --- a/kernel/hook/arm64/syscall_hook.c
 +++ b/kernel/hook/arm64/syscall_hook.c
 @@ -49,13 +49,15 @@
@@ -1975,7 +1964,6 @@
      pr_info("dispatcher installed at slot %d\n", ksu_dispatcher_nr);
  }
  
-
 --- a/kernel/hook/setuid_hook.h
 +++ b/kernel/hook/setuid_hook.h
 @@ -7,4 +7,11 @@
@@ -1990,7 +1978,6 @@
 +#endif
 +
  #endif
-
 --- a/kernel/hook/syscall_event_bridge.c
 +++ b/kernel/hook/syscall_event_bridge.c
 @@ -47,79 +47,78 @@
@@ -2136,7 +2123,6 @@
 +#endif
      return ret;
  }
-
 --- a/kernel/hook/syscall_hook.h
 +++ b/kernel/hook/syscall_hook.h
 @@ -39,7 +39,7 @@
@@ -2148,7 +2134,6 @@
  
  // Restore syscall_table[@nr] to its original value recorded by
  // ksu_syscall_table_hook(), and remove the entry from the tracking list.
-
 --- a/kernel/hook/syscall_hook_manager.c
 +++ b/kernel/hook/syscall_hook_manager.c
 @@ -23,6 +23,7 @@
@@ -2159,7 +2144,6 @@
  #ifdef CONFIG_KRETPROBES
  
  static struct kretprobe *init_kretprobe(const char *name, kretprobe_handler_t handler)
-
 --- a/kernel/hook/tp_marker.c
 +++ b/kernel/hook/tp_marker.c
 @@ -103,7 +103,7 @@
@@ -2171,7 +2155,6 @@
      }
      read_unlock(&tasklist_lock);
  }
-
 --- a/kernel/hook/x86_64/syscall_hook.c
 +++ b/kernel/hook/x86_64/syscall_hook.c
 @@ -54,13 +54,15 @@
@@ -2244,7 +2227,6 @@
      pr_info("dispatcher installed at slot %d\n", ksu_dispatcher_nr);
  }
  
-
 --- a/kernel/include/ksu.h
 +++ b/kernel/include/ksu.h
 @@ -9,7 +9,11 @@
@@ -2259,7 +2241,6 @@
  extern struct selinux_policy *backup_sepolicy;
  extern bool ksu_no_custom_rc;
  
-
 --- a/kernel/policy/allowlist.c
 +++ b/kernel/policy/allowlist.c
 @@ -306,7 +306,12 @@
@@ -2276,7 +2257,6 @@
  #ifdef CONFIG_KSU_DISABLE_POLICY
      return !__ksu_is_allow_uid(uid);
  #else
-
 --- a/kernel/policy/app_profile.c
 +++ b/kernel/policy/app_profile.c
 @@ -1,3 +1,6 @@
@@ -2406,7 +2386,6 @@
 +    pr_info("seccomp_filter_release has_call_to_spin_lock = %d\n", has_call_to_spin_lock);
 +#endif
 +}
-
 --- a/kernel/policy/app_profile.h
 +++ b/kernel/policy/app_profile.h
 @@ -2,6 +2,7 @@
@@ -2424,7 +2403,6 @@
 +void __init ksu_app_profile_init(void);
 +
  #endif
-
 --- a/kernel/policy/feature.h
 +++ b/kernel/policy/feature.h
 @@ -2,7 +2,7 @@
@@ -2436,10 +2414,9 @@
  
  typedef int (*ksu_feature_get_t)(u64 *value);
  typedef int (*ksu_feature_set_t)(u64 value);
-
 --- a/kernel/preinit/preinit.c
 +++ b/kernel/preinit/preinit.c
-@@ -29,6 +29,10 @@
+@@ -30,6 +30,10 @@
  
  void __init ksu_preinit_init(void)
  {
@@ -2450,7 +2427,7 @@
      size_t size = ksu_preinit_runner_end - ksu_preinit_runner_start;
      struct file *file;
      loff_t pos = 0;
-@@ -54,6 +58,7 @@
+@@ -58,6 +62,7 @@
  
      ksu_preinit_file = file;
      pr_info("preinit: runner staged (%zu bytes)\n", size);
@@ -2458,26 +2435,6 @@
  }
  
  bool ksu_preinit_enabled_param(void)
-@@ -76,6 +81,7 @@
-     ksu_preinit_release();
- }
- 
-+#if defined(CONFIG_KPROBES) && !defined(CONFIG_KSU_SUSFS)
- static bool is_selinux_setup(const char __user *const __user *argv_user)
- {
-     static const char expected[] = "selinux_setup";
-@@ -157,3 +163,10 @@
-     }
-     return true;
- }
-+#else
-+bool ksu_preinit_handle_execve(const char __user **filename_user, const char __user *const __user *argv_user,
-+                               int orig_nr, struct pt_regs *regs, long *ret)
-+{
-+    return false;
-+}
-+#endif
-
 --- a/kernel/runtime/boot_event.c
 +++ b/kernel/runtime/boot_event.c
 @@ -1,9 +1,10 @@
@@ -2538,7 +2495,6 @@
  
  void on_module_mounted(void)
  {
-
 --- a/kernel/runtime/ksud.h
 +++ b/kernel/runtime/ksud.h
 @@ -8,6 +8,11 @@
@@ -2553,9 +2509,9 @@
  #define MAX_ARG_STRINGS 0x7FFFFFFF
  struct user_arg_ptr {
  #ifdef CONFIG_COMPAT
-@@ -21,7 +26,10 @@
-     } ptr;
- };
+@@ -42,7 +47,10 @@
+     return native;
+ }
  
 +#ifdef CONFIG_KSU_SUSFS
  int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
@@ -2564,7 +2520,6 @@
  #endif
 +
 +#endif
-
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
 @@ -104,6 +104,12 @@
@@ -2591,7 +2546,6 @@
  out_unlock:
      mutex_unlock(&selinux_state.policy_mutex);
  }
-
 --- a/kernel/selinux/selinux.c
 +++ b/kernel/selinux/selinux.c
 @@ -95,6 +95,15 @@
@@ -2693,7 +2647,6 @@
      susfs_set_sid(KERNEL_PRIV_APP_DOMAIN, &susfs_priv_app_sid);
  }
 +#endif
-
 --- a/kernel/selinux/selinux.h
 +++ b/kernel/selinux/selinux.h
 @@ -42,6 +42,7 @@
@@ -2711,66 +2664,9 @@
 +#endif
  
  #endif
-
 --- a/kernel/sulog/event.c
 +++ b/kernel/sulog/event.c
-@@ -25,6 +25,18 @@
- #define KSU_SULOG_MAX_ARG_CHUNK 256U
- #define KSU_SULOG_MAX_FILENAME_LEN 256U
- 
-+struct user_arg_ptr {
-+#ifdef CONFIG_COMPAT
-+    bool is_compat;
-+#endif
-+    union {
-+        const char __user *const __user *native;
-+#ifdef CONFIG_COMPAT
-+        const compat_uptr_t __user *compat;
-+#endif
-+    } ptr;
-+};
-+
- static struct ksu_event_queue sulog_queue;
- 
- // Compat bridge for ksu_toolkit (SULog)
-@@ -131,25 +143,25 @@
-     return argv;
- }
- 
--static const char __user *get_user_arg_ptr(struct user_arg_ptr argv, int nr)
-+static const char __user *ksu_sulog_get_user_arg_ptr(struct user_arg_ptr argv, int nr)
- {
--	const char __user *native;
-+    const char __user *native;
- 
- #ifdef CONFIG_COMPAT
--	if (unlikely(argv.is_compat)) {
--		compat_uptr_t compat;
-+    if (unlikely(argv.is_compat)) {
-+        compat_uptr_t compat;
- 
--		if (get_user(compat, argv.ptr.compat + nr))
--			return ERR_PTR(-EFAULT);
-+        if (get_user(compat, argv.ptr.compat + nr))
-+            return ERR_PTR(-EFAULT);
- 
--		return compat_ptr(compat);
--	}
-+        return compat_ptr(compat);
-+    }
- #endif
- 
--	if (get_user(native, argv.ptr.native + nr))
--		return ERR_PTR(-EFAULT);
-+    if (get_user(native, argv.ptr.native + nr))
-+        return ERR_PTR(-EFAULT);
- 
--	return native;
-+    return native;
- }
- 
- static void ksu_sulog_fill_task_info(struct ksu_sulog_event *event, __u16 event_type, int retval)
-@@ -180,28 +192,6 @@
+@@ -160,28 +160,6 @@
      return 1;
  }
  
@@ -2799,7 +2695,7 @@
  static __u32 ksu_sulog_copy_filename(const char __user *filename_user, char *dst, __u32 dst_len)
  {
      long ret;
-@@ -224,8 +214,9 @@
+@@ -204,8 +182,9 @@
      return ret + 1;
  }
  
@@ -2810,16 +2706,16 @@
      char arg[KSU_SULOG_MAX_ARG_CHUNK];
      __u32 used = 0;
      int i;
-@@ -244,7 +235,7 @@
+@@ -224,7 +203,7 @@
          if (fatal_signal_pending(current))
              break;
  
 -        arg_user = get_user_arg_ptr(*argv_user, i);
-+        arg_user = ksu_sulog_get_user_arg_ptr(argv, i);
++        arg_user = get_user_arg_ptr(argv, i);
          if (!arg_user)
              break;
          if (IS_ERR(arg_user))
-@@ -280,8 +271,8 @@
+@@ -260,8 +239,8 @@
      return used + 1;
  }
  
@@ -2830,7 +2726,7 @@
  {
      struct ksu_sulog_pending_event *pending = NULL;
      struct ksu_sulog_event *event;
-@@ -292,7 +283,6 @@
+@@ -272,7 +251,6 @@
      __u32 remaining;
      char *filename_buf;
      char *argv_buf;
@@ -2838,7 +2734,7 @@
      if (!ksu_sulog_is_enabled())
          return NULL;
  
-@@ -309,7 +299,7 @@
+@@ -289,7 +267,7 @@
  
      remaining = KSU_SULOG_MAX_PAYLOAD_LEN - sizeof(*event);
      filename_buf = (char *)payload + sizeof(*event);
@@ -2847,7 +2743,7 @@
      if (!filename_len)
          goto out_free_payload;
  
-@@ -374,10 +364,100 @@
+@@ -354,10 +332,100 @@
      kfree(pending);
  }
  
@@ -2951,7 +2847,6 @@
  }
  
  void ksu_sulog_emit_pending(struct ksu_sulog_pending_event *pending, int retval, gfp_t gfp)
-
 --- a/kernel/sulog/event.h
 +++ b/kernel/sulog/event.h
 @@ -5,7 +5,6 @@
@@ -2979,7 +2874,6 @@
  void ksu_sulog_emit_pending(struct ksu_sulog_pending_event *pending, int retval, gfp_t gfp);
  int ksu_sulog_emit_grant_root(int retval, __u32 uid, __u32 euid, gfp_t gfp);
  
-
 --- a/kernel/supercall/internal.h
 +++ b/kernel/supercall/internal.h
 @@ -14,6 +14,8 @@
@@ -2991,7 +2885,6 @@
  
  extern uint32_t ksuver_override;
  
-
 --- a/kernel/supercall/supercall.h
 +++ b/kernel/supercall/supercall.h
 @@ -24,7 +24,10 @@

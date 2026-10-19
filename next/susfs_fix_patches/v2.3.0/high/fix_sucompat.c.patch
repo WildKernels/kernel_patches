@@ -70,28 +70,7 @@
  	pr_info("su_compat: set to %d\n", enable);
  	return 0;
  }
-@@ -59,16 +81,16 @@
- 
- static char __user *sh_user_path(void)
- {
--    static const char sh_path[] = "/system/bin/sh";
-+	static const char sh_path_local[] = "/system/bin/sh";
- 
--    return userspace_stack_buffer(sh_path, sizeof(sh_path));
-+	return userspace_stack_buffer(sh_path_local, sizeof(sh_path_local));
- }
- 
- static char __user *ksud_user_path(void)
- {
--	static const char ksud_path[] = KSUD_PATH;
-+	static const char ksud_path_local[] = KSUD_PATH;
- 
--	return userspace_stack_buffer(ksud_path, sizeof(ksud_path));
-+	return userspace_stack_buffer(ksud_path_local, sizeof(ksud_path_local));
- }
- 
- static char __user *empty_user_path(void)
-@@ -76,8 +98,6 @@
+@@ -69,8 +91,6 @@
  	return userspace_stack_buffer("", sizeof(""));
  }
  
@@ -100,7 +79,7 @@
  static bool is_ksud_exists()
  {
  	struct path path;
-@@ -89,6 +109,298 @@
+@@ -82,6 +102,298 @@
  	return true;
  }
  
@@ -399,7 +378,7 @@
  long ksu_handle_faccessat_sucompat(int orig_nr, struct pt_regs *regs)
  {
  	const char __user **filename_user, *orig_filename;
-@@ -106,6 +418,10 @@
+@@ -99,6 +411,10 @@
  	strncpy_from_user_nofault(path, *filename_user, sizeof(path));
  
  	if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
@@ -410,7 +389,7 @@
  		old_cred = override_creds(ksu_cred);
  		if (is_ksud_exists()) {
  			ksu_compat_sulog('a');
-@@ -142,6 +458,10 @@
+@@ -135,6 +451,10 @@
  	strncpy_from_user_nofault(path, *filename_user, sizeof(path));
  
  	if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
@@ -421,7 +400,7 @@
  		old_cred = override_creds(ksu_cred);
  		if (is_ksud_exists()) {
  			ksu_compat_sulog('s');
-@@ -197,6 +517,11 @@
+@@ -190,6 +510,11 @@
  	if (likely(memcmp(path, su_path, sizeof(su_path))))
  		goto do_orig_execve;
  
@@ -433,7 +412,7 @@
  	ksu_compat_sulog('x');
  	pr_info("sys_execve su found\n");
  
-@@ -270,6 +595,7 @@
+@@ -263,6 +588,7 @@
  	return ksu_handle_execve_sucompat_common(filename_user, (const char __user *const __user *)PT_REGS_PARM3(regs),
  						 PT_REGS_SYSCALL_PARM4(regs), true, orig_nr, regs);
  }
