@@ -143,6 +143,9 @@ Verified by:
   - keeps the sync's fd-based `ksu_setup_preinit_file()` /
     `ksu_preinit_handle_post_execveat()` functions, because the
     synced `50_add_susfs_in_*.patch` calls them from `fs/exec.c`;
+  - keeps `close_fd()` on 5.15+ and falls back to
+    `ksu_close_fd()` on < 5.15, where the vendor trees do not provide
+    `close_fd()`;
   - no longer needs `fix_ksud_integration.c.patch`.
 
 Verified by:

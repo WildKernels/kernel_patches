@@ -2435,6 +2435,18 @@
  }
  
  bool ksu_preinit_enabled_param(void)
+@@ -127,7 +132,11 @@
+     len = snprintf(fd_path, sizeof(fd_path), "/proc/self/fd/%d", fd);
+     if (kern_path(fd_path, LOOKUP_FOLLOW, &path)) {
+         pr_err("preinit: %s not reachable, booting without preinit\n", fd_path);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
++        ksu_close_fd(fd);
++#else
+         close_fd(fd);
++#endif
+         return -EINVAL;
+     }
+     path_put(&path);
 --- a/kernel/runtime/boot_event.c
 +++ b/kernel/runtime/boot_event.c
 @@ -1,9 +1,10 @@
