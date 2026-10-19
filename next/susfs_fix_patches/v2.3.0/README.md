@@ -25,18 +25,19 @@ enable patch both keep moving:
 | `./` (this dir) | `<= 33333` | `dev` @ 2026-10-08 (`763a08d2` / `cffddfb1`, tiann/KernelSU#3871) | `10_enable_susfs_for_ksu.patch` stored here (susfs4ksu @ `687d2d18`, 2026-09-26) |
 | `./high-33341/` | `33341 .. 33390` | `dev` @ 2026-10-15 (`89dc20d2`) | pre-2026-10-19 susfs4ksu archive (`2ad2973` / `ca7093a1`) |
 | `./high/` | `>= 33397` | `dev` @ 2026-10-19 (`d65c9db1`) | pre-2026-10-19 susfs4ksu archive (enable patch without the KernelSU-main preinit helpers) |
-| `./high-kmain/` | `>= 33397` | `dev` @ 2026-10-19 (`d65c9db1`) | 2026-10-19 KernelSU-main sync (`3d5c4dc1` / `291d5715` / `049e7b8a`) |
+| `./high-kmain/` | `>= 33397` | `dev` @ 2026-10-19 (`d65c9db1`) | 2026-10-19 06:30 UTC KernelSU-main sync (`3d5c4dc1` / `291d5715` / `049e7b8a`) |
+| `./high-kmain2/` | `>= 33397` | `dev` @ 2026-10-19 (`d65c9db1`) | 2026-10-19 10:33 UTC "Reuse upstream selinux_hide" sync (`c3e3d945` / `1ac091c4` / `f6c04677`) |
 
-The two `>= 33397` directories are selected from the enable patch
-itself: `high-kmain/` is used when
-`10_enable_susfs_for_ksu.patch` contains `ksu_setup_preinit_file`
-(i.e. the KernelSU-main sync), otherwise `high/` is used.  This keeps
-both SUSFS variants working without overwriting either patch set.
+The `>= 33397` directory is selected by the **exact sha256 of the
+enable patch**, using `fix-patch-manifest` in this directory.  Add a
+new directory and manifest line for every new SUSFS enable-patch
+revision; never overwrite an existing directory, because two SUSFS
+revisions can be in use at the same KSUVER.
 
-The KernelSU-main sync is only supported for KSUVER >= 33397.  For
-KSUVER <= 33390 the workflow rejects it with an explicit error instead
-of applying mismatched fixes; pin SUSFS to a pre-2026-10-19 ref for
-those KernelSU-Next versions.
+The KernelSU-main syncs are only supported for KSUVER >= 33397.  For
+KSUVER <= 33390 the workflow rejects them with an explicit error
+instead of applying mismatched fixes; pin SUSFS to a pre-2026-10-19
+ref for those KernelSU-Next versions.
 
 Unsupported transition windows:
 - 33334–33340: selinux-hide time side-channel rewrite @33334, forced
@@ -155,6 +156,26 @@ Verified by:
    contains `config KSU_SUSFS`;
 2. building the KSU tree in the CI matrix (the first CI run using this
    set exposed and fixed the `get_user_arg_ptr` redefinition).
+
+## Provenance (high era `high-kmain2/`, >= 33397, selinux_hide reuse)
+
+- SUSFS integration source: the 2026-10-19 10:33 UTC commits
+  `"kernel & KernelSU: Reuse upstream selinux_hide existing code"`
+  (`c3e3d945` for android15-6.6, `1ac091c4` for android16-6.12,
+  `f6c04677` for android14-6.1).
+- This revision replaces the large SUSFS selinux_hide implementation
+  with the upstream selinux_hide code plus a `my_setprocattr()` hook.
+  Consequently the old `kernel/feature/selinux_hide.c` hunks from
+  `high-kmain/` are obsolete and removed from this set.  The enable
+  patch itself now provides the implementation that the synced
+  `50_add_susfs_in_*.patch` expects.
+- The KSU-side fixes are otherwise the same as `high-kmain/`
+  (`get_user_arg_ptr` from `ksud.h`, fd-based preinit, version-gated
+  `ksu_close_fd()`).
+
+Verified by applying the full enable → fixes → extras sequence at
+KSUVER 33397 and 33403; no rejects remain and `config KSU_SUSFS` is
+present in `kernel/Kconfig`.
 
 ## Regeneration
 

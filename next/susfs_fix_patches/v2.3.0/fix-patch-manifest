@@ -1,0 +1,15 @@
+# SUSFS v2.3.0 fix-patch manifest
+#
+# Maps the sha256 of susfs4ksu's
+# kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch to the
+# directory that holds the matching KernelSU-Next fix set.
+#
+# Add a new line (and a new directory) whenever susfs4ksu changes the
+# enable patch in a way that does not match an existing set.  Do not
+# overwrite an existing directory: two SUSFS revisions can be in use at
+# the same KSUVER.
+#
+# sha256                                                            directory
+8e334fd6e803b40e65215c350a391949ab6fb89d994b5f6340fbc6a450e18629  high
+f701593ae0108a6ff727882328001f0223e66b6d4de23669ad72ccf2cc02a574  high-kmain
+1918a448632c74fd39d72767d8c9759344b7cff4a5f6ac5b2a0cfbf0e8f2b061  high-kmain2
