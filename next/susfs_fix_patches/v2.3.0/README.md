@@ -23,8 +23,20 @@ enable patch both keep moving:
 | Directory | KSUVER range | Upstream base | Enable patch |
 |---|---|---|---|
 | `./` (this dir) | `<= 33333` | `dev` @ 2026-10-08 (`763a08d2` / `cffddfb1`, tiann/KernelSU#3871) | `10_enable_susfs_for_ksu.patch` stored here (susfs4ksu @ `687d2d18`, 2026-09-26) |
-| `./high-33341/` | `33341 .. 33390` | `dev` @ 2026-10-15 (`89dc20d2`) | susfs4ksu archive @ `2ad2973` or newer (`kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch`) |
-| `./high/` | `>= 33397` | `dev` @ 2026-10-19 (`d65c9db1`) | susfs4ksu archive @ 2026-10-19 KernelSU-main sync (`3d5c4dc1` or newer) |
+| `./high-33341/` | `33341 .. 33390` | `dev` @ 2026-10-15 (`89dc20d2`) | pre-2026-10-19 susfs4ksu archive (`2ad2973` / `ca7093a1`) |
+| `./high/` | `>= 33397` | `dev` @ 2026-10-19 (`d65c9db1`) | pre-2026-10-19 susfs4ksu archive (enable patch without the KernelSU-main preinit helpers) |
+| `./high-kmain/` | `>= 33397` | `dev` @ 2026-10-19 (`d65c9db1`) | 2026-10-19 KernelSU-main sync (`3d5c4dc1` / `291d5715` / `049e7b8a`) |
+
+The two `>= 33397` directories are selected from the enable patch
+itself: `high-kmain/` is used when
+`10_enable_susfs_for_ksu.patch` contains `ksu_setup_preinit_file`
+(i.e. the KernelSU-main sync), otherwise `high/` is used.  This keeps
+both SUSFS variants working without overwriting either patch set.
+
+The KernelSU-main sync is only supported for KSUVER >= 33397.  For
+KSUVER <= 33390 the workflow rejects it with an explicit error instead
+of applying mismatched fixes; pin SUSFS to a pre-2026-10-19 ref for
+those KernelSU-Next versions.
 
 Unsupported transition windows:
 - 33334–33340: selinux-hide time side-channel rewrite @33334, forced
@@ -82,7 +94,38 @@ The high-era tree was verified by:
    `89dc20d2` and `4cb8ee68` (KSUVER 33388);
 3. patch-application tests across KSUVER 33341..33388.
 
-## Provenance (high era `high/`, >= 33397)
+## Provenance (high era `high/`, >= 33397, pre-2026-10-19 SUSFS)
+
+- Upstream base: `KernelSU-Next/KernelSU-Next` @ `7b5fdb7a`, and the
+  set is also patch-compatible with `dev` through `d65c9db1`
+  (KSUVER 33397..33403).
+- SUSFS integration source: `pershoot/KernelSU-Next` branch
+  `dev-susfs` rebased onto `7b5fdb7a`, pure-SUSFS commits:
+  - `c61e123a` kernel: susfs (v2.3.0): Introduce SuSFS
+  - `02cb0447` kernel: susfs: Optimize path flagging, syscalls and Zygote detection
+  - `53173573` kernel: kbuild: Use strip for CONFIG conditional checks
+  - `17922524` kernel: susfs: Implement coexistence with LKM variant
+  Dropped fork-local commits: throne_tracker offload, apk_sign
+  signature-pair extension, setup.sh changes, userspace/gradle changes,
+  Samsung KDP/RKP/DEFEX compat (`a3b65405`, `f48ea311`, `931f97d6`).
+  Samsung remnants that the rebase folded into the SUSFS commits were
+  stripped by hand (app_profile, tp_marker, syscall_hook_manager,
+  init, selinux_hide, Kbuild, compat/).
+- Enable patch: susfs4ksu `gki-*` branches before the 2026-10-19
+  KernelSU-main sync (`2ad2973` / `ca7093a1`; all pre-sync branches
+  carry the same enable patch).
+- `fix_sucompat.c.patch` keeps its local `get_user_arg_ptr()` because
+  this enable patch does not add the helper to `runtime/ksud.h`.
+
+Verified by:
+1. byte-comparing the fully patched tree against the target tree at
+   `7b5fdb7a` (identical);
+2. compiling the patched KernelSU-Next module against linux-5.15.180
+   with gcc — builds cleanly;
+3. the 2026-10-19 04:03 UTC CI run (159/159 jobs) and local
+   patch-application tests at KSUVER 33397..33403.
+
+## Provenance (high era `high-kmain/`, >= 33397, KernelSU-main sync)
 
 - Upstream base: `KernelSU-Next/KernelSU-Next` @ `d65c9db1`
   ("kernel: susfs (LKM): declare susfs_btf_member_offset in the
@@ -92,28 +135,23 @@ The high-era tree was verified by:
   main repo"` commits (`3d5c4dc1` for android15-6.6, `291d5715` for
   android16-6.12, `049e7b8a` for android14-6.1).  The enable patch is
   now generated against KernelSU main rather than KernelSU-Next, so
-  `high/` adapts its hunks to the KernelSU-Next tree.
-- The semantic reference for the KSU-Next side is still the previous
-  `pershoot/KernelSU-Next` `dev-susfs` target (`7b5fdb7a`); the
-  2026-10-19 sync changed the enable patch's `sucompat.c`,
-  `sulog/event.c` and `preinit.c` hunks, which are the files refreshed
-  below.
-- `fix_ksud_integration.c.patch` is no longer needed: the synced enable
-  patch applies to that file cleanly.
-- `preinit.c` deliberately keeps the sync's new fd-based
-  `ksu_setup_preinit_file()` / `ksu_preinit_handle_post_execveat()`
-  functions, because the synced `50_add_susfs_in_*.patch` now calls
-  them from `fs/exec.c`.  The SUSFS hook path still disables the
-  preinit staging code under `CONFIG_KSU_SUSFS`, so those calls are
-  inert.
+  `high-kmain/` adapts its hunks to the KernelSU-Next tree.
+- Compared with `high/`, this set:
+  - drops the obsolete `sh_user_path()` hunk from `fix_sucompat.c`;
+  - uses the `get_user_arg_ptr()` helper that the synced enable patch
+    adds to `kernel/runtime/ksud.h` instead of defining a duplicate;
+  - keeps the sync's fd-based `ksu_setup_preinit_file()` /
+    `ksu_preinit_handle_post_execveat()` functions, because the
+    synced `50_add_susfs_in_*.patch` calls them from `fs/exec.c`;
+  - no longer needs `fix_ksud_integration.c.patch`.
 
 Verified by:
 1. applying the full workflow sequence (enable patch → per-file fixes
-   → `susfs_extras.patch`) to `d65c9db1` and checking that every fix
-   applies without rejects and `kernel/Kconfig` contains
-   `config KSU_SUSFS`;
-2. compiling is verified by the CI matrix; this directory no longer
-   needs a special pinned SUSFS ref.
+   → `susfs_extras.patch`) at KSUVER 33397, 33400, 33401, 33402 and
+   33403; every fix applies without rejects and `kernel/Kconfig`
+   contains `config KSU_SUSFS`;
+2. building the KSU tree in the CI matrix (the first CI run using this
+   set exposed and fixed the `get_user_arg_ptr` redefinition).
 
 ## Regeneration
 
