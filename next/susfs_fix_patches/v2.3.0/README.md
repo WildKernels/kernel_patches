@@ -172,10 +172,16 @@ Verified by:
 - The KSU-side fixes are otherwise the same as `high-kmain/`
   (`get_user_arg_ptr` from `ksud.h`, fd-based preinit, version-gated
   `ksu_close_fd()`).
+- The follow-up 2026-10-19 16:00 UTC `"KernelSU: Sync with the official
+  KernelSU main repo"` revision (`f43926d`, enable-patch sha256
+  `056d684c...`) keeps the same upstream-selinux_hide implementation;
+  its enable-patch changes are limited to Kconfig defaults and
+  `ksud_integration.c` offsets.  The same manifest entry and extras set
+  therefore apply.
 
 Verified by applying the full enable → fixes → extras sequence at
-KSUVER 33397 and 33403; no rejects remain and `config KSU_SUSFS` is
-present in `kernel/Kconfig`.
+KSUVER 33397, 33403 and 33405 (KernelSU-Next `b427a3f9`); no rejects
+remain and `config KSU_SUSFS` is present in `kernel/Kconfig`.
 
 ## Regeneration
 
