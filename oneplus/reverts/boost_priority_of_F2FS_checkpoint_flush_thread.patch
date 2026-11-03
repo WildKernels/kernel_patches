@@ -1,0 +1,74 @@
+diff --git a/block/blk-mq.c b/block/blk-mq.c
+index 0a82eef77cd91..896033db0fb6e 100755
+--- a/block/blk-mq.c
++++ b/block/blk-mq.c
+@@ -2354,6 +2354,7 @@ bool test_task_ux(struct task_struct *task)
+ 
+ 	return ux;
+ }
++EXPORT_SYMBOL_GPL(test_task_ux);
+ 
+ static inline bool need_high_pri_worker(struct request_queue *q)
+ {
+diff --git a/fs/f2fs/checkpoint.c b/fs/f2fs/checkpoint.c
+index a93be146bc231..0f5576ab9c70f 100644
+--- a/fs/f2fs/checkpoint.c
++++ b/fs/f2fs/checkpoint.c
+@@ -10,6 +10,7 @@
+ #include <linux/mpage.h>
+ #include <linux/writeback.h>
+ #include <linux/blkdev.h>
++#include <linux/blk-mq.h>
+ #include <linux/f2fs_fs.h>
+ #include <linux/pagevec.h>
+ #include <linux/swap.h>
+@@ -1907,10 +1908,23 @@ int f2fs_issue_checkpoint(struct f2fs_sb_info *sbi)
+ 	if (waitqueue_active(&cprc->ckpt_wait_queue))
+ 		wake_up(&cprc->ckpt_wait_queue);
+ 
+-	if (cprc->f2fs_issue_ckpt)
++	if (cprc->f2fs_issue_ckpt) {
++		bool prio_changed = false;
++		int orig_nice = 0;
++
++		if (test_task_ux(current)) {
++			prio_changed = true;
++			orig_nice = task_nice(cprc->f2fs_issue_ckpt);
++			sched_set_fifo_low(cprc->f2fs_issue_ckpt);
++		}
++
+ 		wait_for_completion(&req.wait);
+-	else
++
++		if (prio_changed)
++			sched_set_normal(cprc->f2fs_issue_ckpt, orig_nice);
++	} else {
+ 		flush_remained_ckpt_reqs(sbi, &req);
++	}
+ 
+ 	return req.ret;
+ }
+diff --git a/include/linux/blk-mq.h b/include/linux/blk-mq.h
+index 1fa6c86c46185..f6ef7727ef358 100755
+--- a/include/linux/blk-mq.h
++++ b/include/linux/blk-mq.h
+@@ -17,6 +17,19 @@ struct blk_flush_queue;
+ 
+ #ifdef CONFIG_BLK_MQ_USE_LOCAL_THREAD
+ #include <linux/sched.h>
++#endif
++struct task_struct;
++
++#ifdef CONFIG_BLK_MQ_USE_LOCAL_THREAD
++bool test_task_ux(struct task_struct *task);
++#else
++static inline bool test_task_ux(struct task_struct *task)
++{
++	return false;
++}
++#endif
++
++#ifdef CONFIG_BLK_MQ_USE_LOCAL_THREAD
+ #include <linux/kthread.h>
+ #include <linux/sched/rt.h>
+ #include <uapi/linux/sched/types.h>
