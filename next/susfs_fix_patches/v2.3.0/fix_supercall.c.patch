@@ -1,8 +1,8 @@
 diff --git a/kernel/supercall/supercall.c b/kernel/supercall/supercall.c
-index 46ee79ce..914af5d5 100644
+index 46ee79ce..f64937bb 100644
 --- a/kernel/supercall/supercall.c
 +++ b/kernel/supercall/supercall.c
-@@ -119,169 +119,32 @@ static void ksu_install_fd_tw_func(struct callback_head *cb)
+@@ -119,169 +119,31 @@ static void ksu_install_fd_tw_func(struct callback_head *cb)
      kfree(tw);
  }
  
@@ -47,7 +47,7 @@ index 46ee79ce..914af5d5 100644
 -        }
 +    struct ksu_install_fd_tw *tw;
  
-+    tw = kzalloc(sizeof(*tw), GFP_KERNEL);
++    tw = kzalloc(sizeof(*tw), GFP_ATOMIC);
 +    if (!tw)
          return 0;
 -    }
@@ -55,11 +55,13 @@ index 46ee79ce..914af5d5 100644
 -    if (magic2 == GET_SULOG_DUMP_V2) {
 -        if (current_uid().val != 0)
 -            return 0;
--
+ 
 -        int ret = ksu_sulog_handle_compat_dump((void __user *)arg4);
 -        if (ret)
 -            return 0;
--
++    tw->outp = (int __user *)arg4;
++    tw->cb.func = ksu_install_fd_tw_func;
+ 
 -        if (copy_to_user((void __user *)arg4, &reply, sizeof(reply) ))
 -            return 0;
 -    }
@@ -81,14 +83,12 @@ index 46ee79ce..914af5d5 100644
 -        // only root is allowed for this command
 -        if (current_uid().val != 0)
 -            return 0;
- 
+-
 -        char release_buf[65];
 -        char version_buf[65];
 -        static char original_release_buf[65] = {0};
 -        static char original_version_buf[65] = {0};
-+    tw->outp = (int __user *)(*arg);
-+    tw->cb.func = ksu_install_fd_tw_func;
- 
+-
 -        // basically void * void __user * void __user *arg
 -        void __user **ppptr = (void __user **)arg4;
 -
@@ -161,7 +161,7 @@ index 46ee79ce..914af5d5 100644
 -    .symbol_name = REBOOT_SYMBOL,
 -    .pre_handler = reboot_handler_pre,
 -};
- 
+-
  void __init ksu_supercalls_init(void)
  {
 -    int rc;
