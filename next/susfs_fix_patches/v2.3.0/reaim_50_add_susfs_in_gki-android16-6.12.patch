@@ -1,0 +1,107 @@
+# Re-aims four hunks of SUSFS' own kernel patch. NOT a patch for a kernel tree.
+#
+# Apply it to the upstream patch file, not with -p1 in a source tree:
+#
+#   patch --forward --batch --fuzz=0 \
+#     "$SUSFS_FOLDER/kernel_patches/50_add_susfs_in_gki-android16-6.12.patch" \
+#     < reaim_50_add_susfs_in_gki-android16-6.12.patch
+#
+# Dry-run it first and skip it when it no longer applies: it is meant to retire
+# itself once upstream fixes the hunks, and must never half-apply. Afterwards
+# the upstream patch applies as normal, at patch's default fuzz.
+#
+# Why: after susfs4ksu commit acb92d4, 50_add_susfs_in_gki-android16-6.12.patch
+# was regenerated against a kernel that is not android16-6.12, so four hunks
+# cannot apply to any tree on that KMI, AOSP's own branch tip included:
+#
+#   fs/exec.c #1          context carries #include <linux/dma-buf.h>
+#   fs/proc/task_mmu.c #4 expects vma_data_pages() instead of vma_pages()
+#   fs/proc/task_mmu.c #5 expects a mainline-shaped show_smaps_rollup() loop
+#   fs/proc/task_mmu.c #6 same
+#
+# The three task_mmu.c hunks below are restored verbatim from the last upstream
+# revision that had them right for this branch - byte-identical to what
+# gki-android15-6.6 still ships. fs/exec.c #1 just drops the one context line
+# it should never have had. Nothing else in the patch is touched, so this stays
+# correct as SUSFS keeps changing the rest of that file.
+#
+# Same repair is also available as fix_50_add_susfs_in_gki-android16-6.12.patch
+# in this directory, a full copy of the upstream patch with the four hunks
+# already fixed, which the workflow's existing FIX_PATCH fallback can apply
+# as-is. Keep whichever form you prefer and drop the other.
+--- a/kernel_patches/50_add_susfs_in_gki-android16-6.12.patch
++++ b/kernel_patches/50_add_susfs_in_gki-android16-6.12.patch
+@@ -93,10 +93,9 @@
+ index 965fdc593..80d5ff9b2 100644
+ --- a/fs/exec.c
+ +++ b/fs/exec.c
+-@@ -70,6 +70,9 @@
++@@ -70,5 +70,8 @@
+  #include <linux/rseq.h>
+  #include <linux/ksm.h>
+- #include <linux/dma-buf.h>
+ +#ifdef CONFIG_KSU_SUSFS
+ +#include <linux/susfs_def.h>
+ +#endif
+@@ -1465,7 +1464,7 @@
+  	}
+  
+  	start = vma->vm_start;
+-@@ -1549,6 +1591,13 @@ static int show_smap(struct seq_file *m, void *v)
++@@ -1329,6 +1371,13 @@ static int show_smap(struct seq_file *m, void *v)
+  	struct vm_area_struct *vma = v;
+  	struct mem_size_stats mss = {};
+  
+@@ -1476,31 +1475,40 @@
+ +	}
+ +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
+ +
+- 	if (!vma_data_pages(vma))
++ 	if (!vma_pages(vma))
+  		goto show_pad;
+  
+-@@ -1618,6 +1667,11 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
+- 			goto out_unlock;
+- 		}
++@@ -1388,7 +1437,14 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
+  
++ 	vma_start = vma->vm_start;
++ 	do {
+ +#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+ +		if (vma->vm_file && SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
+ +			goto bypass_orig_flow;
+ +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
+-+
+- 		if (vma->vm_start < last_vma_end) {
+- 			/*
+- 			 * After retaking the lock, already reported VMA grew
+-@@ -1630,6 +1684,9 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
+- 			/* Found next unreported VMA, start from its beginning */
+- 			smap_gather_stats(priv, vma, &mss);
+- 		}
++ 		smap_gather_stats(vma, &mss, 0);
+ +#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+ +bypass_orig_flow:
+ +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
+  		last_vma_end = vma->vm_end;
+  
+  		/*
++@@ -1454,8 +1510,15 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
++ 
++ 			/* Case 4 above */
++ 			if (vma->vm_end > last_vma_end) {
+++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+++				if (!vma->vm_file || !(SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))) {
+++					smap_gather_stats(vma, &mss, last_vma_end);
+++					last_vma_end = vma->vm_end;
+++				}
+++#else
++ 				smap_gather_stats(vma, &mss, last_vma_end);
++ 				last_vma_end = vma->vm_end;
+++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
++ 			}
++ 		}
++ 	} for_each_vma(vmi, vma);
+ @@ -2449,6 +2506,9 @@ static ssize_t pagemap_read(struct file *file, char __user *buf,
+  	while (count && (start_vaddr < end_vaddr)) {
+  		int len;
