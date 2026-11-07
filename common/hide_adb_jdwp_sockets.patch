@@ -1,0 +1,143 @@
+diff --git a/net/unix/af_unix.c b/net/unix/af_unix.c
+index 2ce0d4b375cd..2148bc104fc6 100644
+--- a/net/unix/af_unix.c
++++ b/net/unix/af_unix.c
+@@ -115,6 +115,9 @@
+ #include <linux/freezer.h>
+ #include <linux/file.h>
+ #include <linux/btf_ids.h>
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs_def.h>
++#endif
+ 
+ static atomic_long_t unix_nr_socks;
+ static struct hlist_head bsd_socket_buckets[UNIX_HASH_SIZE / 2];
+@@ -1040,6 +1043,11 @@ static struct sock *unix_find_bsd(struct sockaddr_un *sunaddr, int addr_len,
+ 	int err;
+ 
+ 	unix_mkname_bsd(sunaddr, addr_len);
++#ifdef CONFIG_KSU_SUSFS
++	if (susfs_is_current_app_uid() &&
++	    !strcmp(sunaddr->sun_path, "/dev/socket/adbd"))
++		return ERR_PTR(-ENOENT);
++#endif
+ 	err = kern_path(sunaddr->sun_path, LOOKUP_FOLLOW, &path);
+ 	if (err)
+ 		goto fail;
+@@ -1089,6 +1097,13 @@ static struct sock *unix_find_abstract(struct net *net,
+ 	struct dentry *dentry;
+ 	struct sock *sk;
+ 
++#ifdef CONFIG_KSU_SUSFS
++	if (susfs_is_current_app_uid() &&
++	    addr_len >= offsetof(struct sockaddr_un, sun_path) + 1 + 12 &&
++	    !memcmp(sunaddr->sun_path + 1, "jdwp-control", 12))
++		return ERR_PTR(-ECONNREFUSED);
++#endif
++
+ 	sk = unix_find_socket_byname(net, sunaddr, addr_len, hash);
+ 	if (!sk)
+ 		return ERR_PTR(-ECONNREFUSED);
+@@ -1217,6 +1232,11 @@ static int unix_bind_bsd(struct sock *sk, struct sockaddr_un *sunaddr,
+ 		err = vfs_mknod(ns, d_inode(parent.dentry), dentry, mode, 0);
+ 	if (err)
+ 		goto out_path;
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	if (!strcmp(addr->name->sun_path, "/dev/socket/adbd") &&
++	    d_backing_inode(dentry) && d_backing_inode(dentry)->i_mapping)
++		set_bit(AS_FLAGS_SUS_PATH, &d_backing_inode(dentry)->i_mapping->flags);
++#endif
+ 	err = mutex_lock_interruptible(&u->bindlock);
+ 	if (err)
+ 		goto out_unlink;
+@@ -3408,6 +3428,19 @@ static int unix_seq_show(struct seq_file *seq, void *v)
+ 		struct unix_sock *u = unix_sk(s);
+ 		unix_state_lock(s);
+ 
++#ifdef CONFIG_KSU_SUSFS
++		if (susfs_is_current_app_uid() && u->addr) {
++			int path_len = u->addr->len - offsetof(struct sockaddr_un, sun_path);
++			if ((path_len >= 13 && !u->addr->name->sun_path[0] &&
++			     !memcmp(u->addr->name->sun_path + 1, "jdwp-control", 12)) ||
++			    (path_len > 0 && u->addr->name->sun_path[0] &&
++			     !strcmp(u->addr->name->sun_path, "/dev/socket/adbd"))) {
++				unix_state_unlock(s);
++				return 0;
++			}
++		}
++#endif
++
+ 		seq_printf(seq, "%pK: %08X %08X %08X %04X %02X %5lu",
+ 			s,
+ 			refcount_read(&s->sk_refcnt),
+diff --git a/fs/susfs.c b/fs/susfs.c
+index 1a2b3c4d5e6f..7a8b9c0d1e2f 100644
+--- a/fs/susfs.c
++++ b/fs/susfs.c
+@@ -372,7 +372,8 @@ bool susfs_is_inode_sus_path(struct inode *inode)
+ {
+ 	struct fuse_inode *fi = NULL;
+ 	if (!susfs_is_current_proc_umounted_app()) {
+-		return false;
++		if (!(inode && S_ISSOCK(inode->i_mode) && susfs_is_current_app_uid()))
++			return false;
+ 	}
+ 	if (!inode->i_mapping) {
+ 		SUSFS_LOGE("inode->i_mapping is NULL\n");
+diff --git a/fs/readdir.c b/fs/readdir.c
+index 70c4fbcc4..81d5ecdd5 100644
+--- a/fs/readdir.c
++++ b/fs/readdir.c
+@@ -276,7 +276,9 @@ static bool filldir(struct dir_context *ctx, const char *name, int namlen,
+ 	if (prev_reclen && signal_pending(current))
+ 		return false;
+ 
+ #ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	if (susfs_is_current_app_uid() && namlen == 4 && !memcmp(name, "adbd", 4))
++		return true;
+ 	inode = ilookup(buf->sb, ino);
+ 	if (!inode) {
+ 		goto orig_flow;
+@@ -380,7 +382,9 @@ static bool filldir64(struct dir_context *ctx, const char *name, int namlen,
+ 	if (prev_reclen && signal_pending(current))
+ 		return false;
+ 
+ #ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	if (susfs_is_current_app_uid() && namlen == 4 && !memcmp(name, "adbd", 4))
++		return true;
+ 	inode = ilookup(buf->sb, ino);
+ 	if (!inode) {
+ 		goto orig_flow;
+diff --git a/fs/stat.c b/fs/stat.c
+index 60b31f5e4..91c42a6f5 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -282,6 +282,10 @@ static int vfs_statx(int dfd, struct filename *filename, int flags,
+ 	int error;
+ 
+ #ifdef CONFIG_KSU_SUSFS
++	if (susfs_is_current_app_uid() && filename && !IS_ERR(filename) &&
++	    (!strcmp(filename->name, "/dev/socket/adbd") ||
++	     (dfd != AT_FDCWD && !strcmp(filename->name, "adbd"))))
++		return -ENOENT;
+ 	if (likely(susfs_is_current_proc_no_su()))
+ 		goto orig_flow;
+ 
+diff --git a/fs/open.c b/fs/open.c
+index 74d26534d..85e37645e 100644
+--- a/fs/open.c
++++ b/fs/open.c
+@@ -458,6 +458,13 @@ static long do_faccessat(int dfd, const char __user *filename, int mode, int fla
+ #ifdef CONFIG_KSU_SUSFS
+ 	fname = getname_flags(filename, lookup_flags, NULL);
+ 
++	if (susfs_is_current_app_uid() && !IS_ERR(fname) &&
++	    (!strcmp(fname->name, "/dev/socket/adbd") ||
++	     (dfd != AT_FDCWD && !strcmp(fname->name, "adbd")))) {
++		putname(fname);
++		res = -ENOENT;
++		goto out;
++	}
+ 	if (likely(susfs_is_current_proc_no_su()))
+ 		goto orig_flow;
+ 
