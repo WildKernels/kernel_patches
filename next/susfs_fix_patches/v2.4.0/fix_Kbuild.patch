@@ -1,0 +1,79 @@
+diff --git a/kernel/Kbuild b/kernel/Kbuild
+index 7f3e5886..ed5bee13 100644
+--- a/kernel/Kbuild
++++ b/kernel/Kbuild
+@@ -5,21 +5,7 @@ kernelsu-objs += feature/module_blacklist.o
+ kernelsu-objs += feature/sulog.o
+ kernelsu-objs += feature/sucompat.o
+ 
+-kernelsu-objs += hook/lsm_hook.o
+ kernelsu-objs += hook/setuid_hook.o
+-kernelsu-objs += hook/syscall_event_bridge.o
+-kernelsu-objs += hook/syscall_hook_manager.o
+-kernelsu-objs += hook/tp_marker.o
+-ifeq ($(CONFIG_ARM64),y)
+-kernelsu-objs += hook/arm64/patch_memory.o
+-kernelsu-objs += hook/arm64/syscall_hook.o
+-else ifeq ($(CONFIG_X86_64),y)
+-kernelsu-objs += hook/x86_64/patch_memory.o
+-kernelsu-objs += hook/x86_64/syscall_hook.o
+-else ifeq ($(CONFIG_RISCV),y)
+-kernelsu-objs += hook/riscv64/patch_memory.o
+-kernelsu-objs += hook/riscv64/syscall_hook.o
+-endif
+ kernelsu-objs += extras.o
+ 
+ kernelsu-objs += infra/file_wrapper.o
+@@ -205,4 +191,14 @@ ccflags-y += -DKSU_NEW_DCACHE_FLUSH=$(KSU_NEW_DCACHE_FLUSH)
+ ccflags-y += -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat -Wno-missing-prototypes -Wno-missing-declarations
+ ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable
+ 
++## For susfs stuff ##
++ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
++$(eval SUSFS_VERSION=$(shell cat $(srctree)/include/linux/susfs.h | grep -E '^#define SUSFS_VERSION' | cut -d' ' -f3 | sed 's/"//g'))
++$(info )
++$(info -- SUSFS_VERSION: $(SUSFS_VERSION))
++else
++$(info -- You have not integrated susfs in your kernel yet.)
++$(info -- Read: https://gitlab.com/simonpunk/susfs4ksu)
++endif
++
+ # Keep a new line here!! Because someone may append config
+diff --git a/kernel/Makefile b/kernel/Makefile
+index 208e7f0e..05888d7b 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -36,14 +36,4 @@ format:
+ check-format:
+ 	$(FORMAT_FILES) | xargs -0 clang-format --dry-run --Werror
+ 
+-## For susfs stuff ##
+-ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
+-$(eval SUSFS_VERSION=$(shell cat $(srctree)/include/linux/susfs.h | grep -E '^#define SUSFS_VERSION' | cut -d' ' -f3 | sed 's/"//g'))
+-$(info )
+-$(info -- SUSFS_VERSION: $(SUSFS_VERSION))
+-else
+-$(info -- You have not integrated susfs in your kernel yet.)
+-$(info -- Read: https://gitlab.com/simonpunk/susfs4ksu)
+-endif
+-
+ # Keep a new line here!! Because someone may append config
+diff --git a/kernel/runtime/boot_event.c b/kernel/runtime/boot_event.c
+index 76ed4f31..d469c213 100644
+--- a/kernel/runtime/boot_event.c
++++ b/kernel/runtime/boot_event.c
+@@ -16,8 +16,6 @@ bool ksu_module_mounted __read_mostly = false;
+ bool ksu_boot_completed __read_mostly = false;
+ extern struct static_key_true ksu_is_input_hook_enabled;
+ 
+-extern void ksu_avc_spoof_late_init(void);
+-
+ void on_post_fs_data(void)
+ {
+     static bool done = false;
+@@ -77,5 +75,4 @@ void on_boot_completed(void)
+     pr_info("on_boot_completed!\n");
+     track_throne(true);
+     ksu_selinux_hide_drop_backup_if_unused();
+-    ksu_avc_spoof_late_init();
+ }

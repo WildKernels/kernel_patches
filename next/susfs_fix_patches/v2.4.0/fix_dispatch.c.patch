@@ -1,0 +1,50 @@
+diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
+index 06e8f077..e4589422 100644
+--- a/kernel/supercall/dispatch.c
++++ b/kernel/supercall/dispatch.c
+@@ -49,24 +49,14 @@ static int do_get_info(void __user *arg)
+ {
+     struct ksu_get_info_cmd cmd = { .version = KERNEL_SU_VERSION, .flags = 0 };
+ 
+-#ifdef MODULE
+-    cmd.flags |= KSU_GET_INFO_FLAG_LKM;
+-    if (ksu_bundled) {
+-        cmd.flags |= KSU_GET_INFO_FLAG_BUNDLED;
+-    }
+-#endif
+-
+     if (ksuver_override)
+         cmd.version = ksuver_override;
+ 
+     if (is_manager()) {
+         cmd.flags |= KSU_GET_INFO_FLAG_MANAGER;
+     }
+-    if (ksu_late_loaded) {
+-        cmd.flags |= KSU_GET_INFO_FLAG_LATE_LOAD;
+-    }
+     // A late load never sees PID 1's selinux_setup, so preinit cannot run.
+-    if (ksu_preinit_enabled_param() && !ksu_late_loaded) {
++    if (ksu_preinit_enabled_param()) {
+         cmd.flags |= KSU_GET_INFO_FLAG_PREINIT;
+     }
+     cmd.features = KSU_FEATURE_MAX;
+@@ -84,19 +74,9 @@ static int do_get_info_legacy(void __user *arg)
+ {
+     struct ksu_get_info_legacy_cmd cmd = { .version = KERNEL_SU_VERSION, .flags = 0 };
+ 
+-#ifdef MODULE
+-    cmd.flags |= KSU_GET_INFO_FLAG_LKM;
+-    if (ksu_bundled) {
+-        cmd.flags |= KSU_GET_INFO_FLAG_BUNDLED;
+-    }
+-#endif
+-
+     if (is_manager()) {
+         cmd.flags |= KSU_GET_INFO_FLAG_MANAGER;
+     }
+-    if (ksu_late_loaded) {
+-        cmd.flags |= KSU_GET_INFO_FLAG_LATE_LOAD;
+-    }
+     cmd.features = KSU_FEATURE_MAX;
+ 
+     if (copy_to_user(arg, &cmd, sizeof(cmd))) {
