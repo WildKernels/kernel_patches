@@ -1,0 +1,409 @@
+From 48d1ec1ee73031d5c9874cfe5cea11f40ca27970 Mon Sep 17 00:00:00 2001
+From: fatalcoder524 <11532648+fatalcoder524@users.noreply.github.com>
+Date: Tue, 11 Nov 2026 11:30:00 +0530
+Subject: [PATCH] misc: oplus_sdp_900ma: allow 900 mA on USB data ports (SDP)
+
+Reproduce commit 94dcf516 ("charger: add sdp_900ma module parameter for
+USB SDP input current", vendor/oplus/kernel/charger/oplus_charger.c)
+without rebuilding or replacing oplus_chg.ko.
+
+The vendor patch raises the SDP input current limit in
+oplus_chg_set_input_current_limit():
+
+	case POWER_SUPPLY_TYPE_USB:
+		current_limit = chip->limits.input_current_usb_ma;  // 500
+	+	if (sdp_900ma)
+	+		current_limit = max(current_limit, 900);
+		break;
+
+That value is loaded from the device tree by oplus_chg_parse_charger_dt():
+
+	of_property_read_u32(node, "qcom,input_current_usb_ma",
+			     &chip->limits.input_current_usb_ma);
+
+So instead of intercepting the driver, this corrects the input it reads.
+An early_initcall() updates the live device tree, before any platform
+device exists and long before oplus_chg.ko is loaded from vendor_dlkm:
+
+	qcom,input_current_usb_ma  = <500>  ->  <900>
+
+The vendor driver then runs its own unmodified code with 900 in place of
+500: chip->input_current_limit reports 900 as in a patched build, and
+every camera / LED / calling / cool-down / BTB / sale-mode / aging /
+force_input_current_ma clamp still applies, because they all run after
+the switch.  The AICL ladder (usb_icl[] = {300, 500, 800, 1000, ...})
+receives 900 and settles on the 1000 mA step, exactly as a patched phone
+does.
+
+The property is not necessarily in the compiled .dtb: on OPLUS sm8550 the
+qcom,input_current_* limits come from a device-tree overlay
+(oplus-chg-22811.dtsi and friends, built as a DTBO), so grepping the base
+FDT for them finds nothing.  The driver therefore does not assume the
+property exists.  It locates the charger node by, in order: the compatible
+string from the vendor driver's own match table ("qcom,battery-charger",
+oplus_battery_sm8550.c:14065); carrying both limit properties; carrying
+the SDP property; or being the parent of a node that does.  The property
+is then installed with of_update_property(), which replaces an existing
+property and appends a missing one in a single locked operation.  Adding it
+is equivalent to the driver's own fallback: of_property_read_u32() would
+otherwise return -EINVAL and oplus_charger.c:5319 would use
+OPCHG_INPUT_CURRENT_LIMIT_USB_MA (500, oplus_charger.h:310) - the same
+value, so both paths start from 500.
+
+Only the SDP property is written - DCP, CDP and PD limits keep their own
+properties - and the boost is refused when the tree already gives SDP a
+limit at or above a real charger.
+
+Because this patches the device tree and not the driver, no kprobe,
+ftrace or function replacement is involved: there is no struct pt_regs,
+no architecture-specific code and no dependency on CONFIG_KPROBES.  The
+OF API used here is unchanged from v5.10 through v6.12+.
+
+Boot with "oplus_sdp_900ma=0" to leave the device tree untouched.
+
+Signed-off-by: Arena Agent <agent@arena.ai>
+---
+ drivers/misc/Kconfig          | 33 +++++++++++++++++++++++++++++++++
+ drivers/misc/Makefile         |  1 +
+ drivers/misc/oplus_sdp_900ma.c | 291 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 321 insertions(+)
+ create mode 100644 drivers/misc/oplus_sdp_900ma.c
+
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -492,4 +492,33 @@
+ 
++config OPLUS_SDP_900MA
++	bool "Allow 900 mA input current on USB data ports (OPLUS sm8550)"
++	depends on OF
++	default y
++	help
++	  Reproduces the effect of the commit
++	    "charger: add sdp_900ma module parameter for USB SDP input current"
++	  without rebuilding the OPLUS charger module.
++
++	  At early_initcall time, before any platform device is created, the live
++	  device tree is updated so qcom,input_current_usb_ma reads 900 instead of
++	  500 on the OPLUS charger node.  The vendor charger driver then runs its
++	  own unmodified algorithm: chip->input_current_limit reports 900 as in a
++	  patched build, every camera / LED / calling / cool-down / sale-mode /
++	  aging / force_input_current_ma clamp still applies, and the AICL ladder
++	  settles on the 1000 mA step.
++
++	  The property may come from a device-tree overlay rather than the base
++	  .dtb; it is installed if missing.  Only the SDP property is written -
++	  dedicated chargers (DCP), CDP and PD use their own properties and are
++	  unaffected.
++
++	  Boot with "oplus_sdp_900ma=0" to leave the device tree alone.
++
++	  This is non-spec behaviour: USB 2.0 SDP is 500 mA, USB 3.x SDP is
++	  900 mA.  Only enable it if your port and cable can supply it.
++
++	  If unsure, say N.
++
+ source "drivers/misc/c2port/Kconfig"
+ source "drivers/misc/eeprom/Kconfig"
+ source "drivers/misc/cb710/Kconfig"
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -44,4 +44,5 @@
+ obj-$(CONFIG_VMWARE_VMCI)	+= vmw_vmci/
+ obj-$(CONFIG_LATTICE_ECP3_CONFIG)	+= lattice-ecp3-config.o
++obj-$(CONFIG_OPLUS_SDP_900MA)	+= oplus_sdp_900ma.o
+ obj-$(CONFIG_SRAM)		+= sram.o
+ obj-$(CONFIG_SRAM_EXEC)		+= sram-exec.o
+--- a/drivers/misc/oplus_sdp_900ma.c
++++ b/drivers/misc/oplus_sdp_900ma.c
+@@ -0,0 +1,291 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * oplus_sdp_900ma.c - allow 900 mA on a plain USB data port (SDP)
++ *
++ * Reproduces
++ *
++ *   commit 94dcf516 "charger: add sdp_900ma module parameter for USB SDP
++ *                   input current"
++ *   vendor/oplus/kernel/charger/oplus_charger.c
++ *
++ *     case POWER_SUPPLY_TYPE_USB:
++ *             current_limit = chip->limits.input_current_usb_ma;   // 500
++ *     +       if (sdp_900ma)
++ *     +               current_limit = max(current_limit, 900);
++ *             break;
++ *
++ * without rebuilding oplus_chg.ko.
++ *
++ * ===========================================================================
++ * How
++ * ===========================================================================
++ * oplus_chg_parse_charger_dt() (oplus_charger.c:5288) loads that 500 from the
++ * device tree:
++ *
++ *     of_property_read_u32(node, "qcom,input_current_usb_ma",
++ *                          &chip->limits.input_current_usb_ma);   // :5317
++ *
++ * So instead of intercepting the driver, we correct the input it reads.  At
++ * early_initcall() time - after the DT is unflattened but before any platform
++ * device exists, and long before oplus_chg.ko is loaded from vendor_dlkm -
++ * the property is set to 900 on the charger node.
++ *
++ * Everything after that is the vendor's own unmodified code: chip->
++ * input_current_limit becomes 900 exactly as in a patched build, and every
++ * camera / LED / calling / cool-down / BTB / sale-mode / aging /
++ * force_input_current_ma clamp still applies because they all run after the
++ * switch.  The AICL ladder then settles on the 1000 mA step.
++ *
++ * ===========================================================================
++ * Finding the node - and why the property may not be there yet
++ * ===========================================================================
++ * The property does not always exist in the compiled .dtb.  On OPLUS sm8550
++ * it is supplied by a device-tree overlay (oplus-chg-22811.dtsi and friends,
++ * applied as a DTBO), so at build time there is nothing to grep for - the
++ * text lives in the overlay source, not in the base FDT.
++ *
++ * This driver therefore does not assume the property is present.  It finds
++ * the charger node in three ways, in order:
++ *
++ *   1. by compatible "qcom,battery-charger" - the string in the vendor
++ *      driver's own match table (oplus_battery_sm8550.c:14065), so it is by
++ *      definition the node that oplus_chg.ko will probe;
++ *
++ *   2. by carrying both qcom,input_current_usb_ma and
++ *      qcom,input_current_charger_ma - covers a tree where the limits are
++ *      present but the node is not yet matched;
++ *
++ *   3. by carrying qcom,input_current_usb_ma alone, or by having a parent
++ *      that carries it - covers a sub-node below the charger node.
++ *
++ * Once the node is known the property is written whether or not it already
++ * exists: of_update_property() replaces an existing property and appends a
++ * new one, which is exactly the "if (prop) ... else add" logic in a single,
++ * locked kernel API.
++ *
++ * If the property is absent and we add it, nothing can be broken - the read
++ * at oplus_charger.c:5317 would otherwise have returned -EINVAL and the
++ * driver would have fallen back to OPCHG_INPUT_CURRENT_LIMIT_USB_MA (500,
++ * oplus_charger.h:310).  Both paths end at the same 500 mA, so installing 900
++ * is the same kind of change either way.
++ *
++ * ===========================================================================
++ * Safety gates
++ * ===========================================================================
++ *   - only qcom,input_current_usb_ma is written.  qcom,input_current_charger_ma
++ *     (DCP), qcom,input_current_cdp_ma and qcom,pd_input_current_charger_ma
++ *     are never touched, so a real charger is unaffected.
++ *   - if a charger limit is present in the same node it must be higher than
++ *     the SDP value (500 < 2000); otherwise the platform already gives SDP the
++ *     full budget and nothing is changed.
++ *   - if no charger node is found at all, nothing is written and that is
++ *     logged.  There is no guessing.
++ *
++ * Downstream this cannot reach a real charger: POWER_SUPPLY_TYPE_USB is only
++ * selected for POWER_SUPPLY_USB_TYPE_SDP (opchg_get_charger_type()), while
++ * CDP, DCP and PD_SDP map to their own constants and read
++ * input_current_cdp_ma / input_current_charger_ma.
++ *
++ * ===========================================================================
++ * Compatibility
++ * ===========================================================================
++ * Checked against drivers/of/{base,property}.c and include/linux/of.h in
++ * v5.10, v5.15, v6.1, v6.6 and v6.12:
++ *
++ *   struct property             identical layout in all five
++ *   of_find_compatible_node()   same prototype, exported in all five
++ *   of_find_node_with_property()same prototype, exported in all five
++ *   of_find_property()          same prototype, exported
++ *   of_property_read_u32()      same prototype
++ *   of_update_property()        same prototype (not exported - we are =y)
++ *   of_get_parent() / of_node_put() / early_initcall() / __setup()  unchanged
++ *
++ * No kprobe, no pt_regs, no architecture-specific code, no struct offsets.
++ *
++ * ===========================================================================
++ * Boot parameter
++ * ===========================================================================
++ *     oplus_sdp_900ma=0      disable, leave the tree untouched
++ *     oplus_sdp_900ma=1      enabled (default)
++ */
++
++#define pr_fmt(fmt)	"oplus_sdp_900ma: " fmt
++
++/*
++ * asm/byteorder.h, not linux/byteorder/generic.h: generic.h declares no
++ * includes of its own and only works because linux/byteorder/little_endian.h
++ * (reached through asm/byteorder.h) pulls in linux/types.h and linux/swab.h
++ * first.  Using it directly gives "unknown type name 'u16'" on every arch.
++ * asm/byteorder.h is guaranteed to exist - asm-generic/byteorder.h is
++ * mandatory-y.
++ */
++#include <asm/byteorder.h>
++#include <linux/init.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/string.h>
++#include <linux/types.h>
++
++#define PROP_SDP	"qcom,input_current_usb_ma"
++#define PROP_CHARGER	"qcom,input_current_charger_ma"
++#define COMPATIBLE	"qcom,battery-charger"
++
++/* OPLUS_CHG_900_CHARGING_CURRENT, as in the reference commit. */
++#define SDP_DEFAULT_MA	900
++
++static bool oplus_sdp_900ma __initdata;
++
++/* The property we install; static storage outlives the device tree. */
++static struct property sdp_prop;
++static __be32 sdp_prop_value;
++
++static int __init oplus_sdp_900ma_setup(char *str)
++{
++	oplus_sdp_900ma = !(str && str[0] == '0');
++	return 1;
++}
++__setup("oplus_sdp_900ma=", oplus_sdp_900ma_setup);
++
++/*
++ * Locate the charger node.
++ *
++ * Step 3 walks up one level because the limits are sometimes placed on a child
++ * of the node that gets probed; the device driver reads them from
++ * chip->dev->of_node, so if they are on the parent, patching the parent is
++ * what matters.
++ */
++static struct device_node * __init oplus_sdp_find_node(const char **how)
++{
++	struct device_node *np;
++	struct device_node *carrier;
++
++	*how = "compatible";
++
++	for_each_compatible_node(np, NULL, COMPATIBLE) {
++		if (of_find_property(np, PROP_SDP, NULL) ||
++		    of_find_property(np, PROP_CHARGER, NULL))
++			return np;
++	}
++	/* nothing matched the compatible: the loop released everything */
++
++	*how = "both limits";
++	np = NULL;
++	while ((np = of_find_node_with_property(np, PROP_SDP))) {
++		if (of_find_property(np, PROP_CHARGER, NULL))
++			return np;
++	}
++
++	*how = "property";
++	np = NULL;
++	while ((np = of_find_node_with_property(np, PROP_SDP))) {
++		return np;
++	}
++
++	/* last resort: the property may sit on the parent of a probed node */
++	*how = "parent";
++	np = NULL;
++	while ((np = of_find_node_with_property(np, PROP_CHARGER))) {
++		carrier = of_get_parent(np);
++		if (carrier && of_find_property(carrier, PROP_SDP, NULL)) {
++			of_node_put(np);
++			return carrier;
++		}
++		of_node_put(carrier);
++	}
++
++	*how = NULL;
++	return NULL;
++}
++
++static int __init oplus_sdp_900ma_init(void)
++{
++	struct device_node *np;
++	const char *how = NULL;
++	struct property *had;
++	u32 usb_ma = 0, chg_ma = 0, after = 0;
++	bool had_sdp;
++	int rc;
++
++	if (!oplus_sdp_900ma)
++		return 0;
++
++	np = oplus_sdp_find_node(&how);
++	if (!np) {
++		pr_err("no charger node found (tried %s, %s, %s, %s); "
++		       "leaving the device tree alone - the charger will use "
++		       "its 500 mA fallback\n", COMPATIBLE, PROP_SDP " + "
++		       PROP_CHARGER, PROP_SDP, PROP_CHARGER " parent");
++		return 0;
++	}
++
++	had = of_find_property(np, PROP_SDP, NULL);
++	had_sdp = had != NULL;
++
++	if (of_property_read_u32(np, PROP_SDP, &usb_ma))
++		usb_ma = 0;
++	if (of_property_read_u32(np, PROP_CHARGER, &chg_ma))
++		chg_ma = 0;
++
++	/*
++	 * If the tree states a charger limit, SDP must be below it, otherwise
++	 * this platform already gives SDP the full budget and there is
++	 * nothing to lift.
++	 */
++	if (chg_ma && usb_ma >= chg_ma) {
++		pr_info("%pOF (via %s): SDP %u >= charger %u mA, leaving as is\n",
++			np, how, usb_ma, chg_ma);
++		of_node_put(np);
++		return 0;
++	}
++
++	if (usb_ma >= SDP_DEFAULT_MA) {
++		pr_info("%pOF (via %s): SDP already %u mA, nothing to do\n",
++			np, how, usb_ma);
++		of_node_put(np);
++		return 0;
++	}
++
++	sdp_prop_value = cpu_to_be32(SDP_DEFAULT_MA);
++	memset(&sdp_prop, 0, sizeof(sdp_prop));
++	sdp_prop.name = (char *)PROP_SDP;
++	sdp_prop.length = sizeof(sdp_prop_value);
++	sdp_prop.value = &sdp_prop_value;
++
++	/* replace if present, append if not - one locked operation */
++	rc = of_update_property(np, &sdp_prop);
++	if (rc) {
++		pr_err("%pOF: of_update_property failed, rc=%d\n", np, rc);
++		of_node_put(np);
++		return 0;
++	}
++
++	/* read it back through the helper the charger driver uses */
++	rc = of_property_read_u32(np, PROP_SDP, &after);
++	if (rc || after != SDP_DEFAULT_MA) {
++		pr_err("%pOF: read back failed (rc=%d, %u), tree unchanged?\n",
++		       np, rc, after);
++		of_node_put(np);
++		return 0;
++	}
++
++	pr_info("%pOF (via %s): %s%s -> %u mA%s\n", np, how,
++		had_sdp ? "" : "(absent, added) ", had_sdp ? "" : "",
++		after, chg_ma ? " (charger limit untouched)" : "");
++	if (had_sdp)
++		pr_info("%pOF: was %u mA, now %u mA\n", np, usb_ma, after);
++
++	of_node_put(np);
++	return 0;
++}
++
++/*
++ * early_initcall runs before of_platform_default_populate_init()
++ * (arch_initcall_sync) creates the platform devices and long before
++ * oplus_chg.ko is loaded from vendor_dlkm, so every reader - built-in or
++ * module - sees the new value.
++ */
++early_initcall(oplus_sdp_900ma_init);
++
++MODULE_DESCRIPTION("Allow 900 mA input current on SDP (OPLUS sm8550)");
++MODULE_LICENSE("GPL v2");
