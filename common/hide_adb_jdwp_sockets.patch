@@ -1,143 +1,225 @@
+diff --git a/fs/readdir.c b/fs/readdir.c
+index 70c4fbc..5a75b86 100644
+--- a/fs/readdir.c
++++ b/fs/readdir.c
+@@ -172,4 +172,8 @@ static bool fillonedir(struct dir_context *ctx, const char *name, int namlen,
+ 	inode = ilookup(buf->sb, ino);
+ 	if (!inode) {
++		if (unlikely(d_type == DT_SOCK && namlen == 4 &&
++			     !memcmp(name, "adbd", 4) &&
++			     susfs_is_current_app_uid()))
++			return SUSFS_FILLDIR_SKIP;
+ 		goto orig_flow;
+ 	}
+@@ -280,4 +284,8 @@ static bool filldir(struct dir_context *ctx, const char *name, int namlen,
+ 	inode = ilookup(buf->sb, ino);
+ 	if (!inode) {
++		if (unlikely(d_type == DT_SOCK && namlen == 4 &&
++			     !memcmp(name, "adbd", 4) &&
++			     susfs_is_current_app_uid()))
++			return SUSFS_FILLDIR_SKIP;
+ 		goto orig_flow;
+ 	}
+@@ -384,4 +392,8 @@ static bool filldir64(struct dir_context *ctx, const char *name, int namlen,
+ 	inode = ilookup(buf->sb, ino);
+ 	if (!inode) {
++		if (unlikely(d_type == DT_SOCK && namlen == 4 &&
++			     !memcmp(name, "adbd", 4) &&
++			     susfs_is_current_app_uid()))
++			return SUSFS_FILLDIR_SKIP;
+ 		goto orig_flow;
+ 	}
+@@ -495,4 +507,8 @@ static bool compat_fillonedir(struct dir_context *ctx, const char *name,
+ 	inode = ilookup(buf->sb, ino);
+ 	if (!inode) {
++		if (unlikely(d_type == DT_SOCK && namlen == 4 &&
++			     !memcmp(name, "adbd", 4) &&
++			     susfs_is_current_app_uid()))
++			return SUSFS_FILLDIR_SKIP;
+ 		goto orig_flow;
+ 	}
+@@ -596,4 +612,8 @@ static bool compat_filldir(struct dir_context *ctx, const char *name, int namlen
+ 	inode = ilookup(buf->sb, ino);
+ 	if (!inode) {
++		if (unlikely(d_type == DT_SOCK && namlen == 4 &&
++			     !memcmp(name, "adbd", 4) &&
++			     susfs_is_current_app_uid()))
++			return SUSFS_FILLDIR_SKIP;
+ 		goto orig_flow;
+ 	}
+diff --git a/fs/susfs.c b/fs/susfs.c
+index a33a809..405e416 100644
+--- a/fs/susfs.c
++++ b/fs/susfs.c
+@@ -372,4 +372,16 @@ bool susfs_is_inode_sus_path(struct inode *inode)
+ {
+ 	struct fuse_inode *fi = NULL;
++	if (unlikely(S_ISSOCK(inode->i_mode) && susfs_is_current_app_uid())) {
++		struct dentry *dentry;
++		rcu_read_lock();
++		dentry = hlist_entry_safe(READ_ONCE(inode->i_dentry.first),
++					  struct dentry, d_u.d_alias);
++		if (dentry && !strcmp(dentry->d_name.name, "adbd") &&
++		    dentry->d_parent && !strcmp(dentry->d_parent->d_name.name, "socket")) {
++			rcu_read_unlock();
++			return true;
++		}
++		rcu_read_unlock();
++	}
+ 	if (!susfs_is_current_proc_umounted_app()) {
+ 		return false;
+diff --git a/include/linux/susfs_def.h b/include/linux/susfs_def.h
+index 588c1ed..1e6f644 100644
+--- a/include/linux/susfs_def.h
++++ b/include/linux/susfs_def.h
+@@ -5,4 +5,12 @@
+ #include <linux/bitmap.h>
+ #include <linux/string.h>
++#include <linux/cred.h>
++#include <linux/version.h>
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
++#define SUSFS_FILLDIR_SKIP true
++#else
++#define SUSFS_FILLDIR_SKIP 0
++#endif
+ 
+ /********/
 diff --git a/net/unix/af_unix.c b/net/unix/af_unix.c
-index 2ce0d4b375cd..2148bc104fc6 100644
+index 5ce6008..efb58be 100644
 --- a/net/unix/af_unix.c
 +++ b/net/unix/af_unix.c
-@@ -115,6 +115,9 @@
- #include <linux/freezer.h>
- #include <linux/file.h>
- #include <linux/btf_ids.h>
+@@ -111,4 +111,7 @@
+ #include <linux/rtnetlink.h>
+ #include <linux/mount.h>
 +#ifdef CONFIG_KSU_SUSFS
 +#include <linux/susfs_def.h>
 +#endif
- 
- static atomic_long_t unix_nr_socks;
- static struct hlist_head bsd_socket_buckets[UNIX_HASH_SIZE / 2];
-@@ -1040,6 +1043,11 @@ static struct sock *unix_find_bsd(struct sockaddr_un *sunaddr, int addr_len,
- 	int err;
- 
- 	unix_mkname_bsd(sunaddr, addr_len);
-+#ifdef CONFIG_KSU_SUSFS
-+	if (susfs_is_current_app_uid() &&
-+	    !strcmp(sunaddr->sun_path, "/dev/socket/adbd"))
-+		return ERR_PTR(-ENOENT);
-+#endif
- 	err = kern_path(sunaddr->sun_path, LOOKUP_FOLLOW, &path);
- 	if (err)
- 		goto fail;
-@@ -1089,6 +1097,13 @@ static struct sock *unix_find_abstract(struct net *net,
- 	struct dentry *dentry;
- 	struct sock *sk;
+ #include <net/checksum.h>
+ #include <linux/security.h>
+@@ -817,10 +820,80 @@ out_print:
+ #endif
  
 +#ifdef CONFIG_KSU_SUSFS
-+	if (susfs_is_current_app_uid() &&
-+	    addr_len >= offsetof(struct sockaddr_un, sun_path) + 1 + 12 &&
-+	    !memcmp(sunaddr->sun_path + 1, "jdwp-control", 12))
-+		return ERR_PTR(-ECONNREFUSED);
++static bool susfs_is_hidden_adb_jdwp_addr(struct sockaddr *uaddr, int addr_len)
++{
++	struct sockaddr_un *sunaddr = (struct sockaddr_un *)uaddr;
++	int path_len;
++
++	if (!uaddr || addr_len <= offsetof(struct sockaddr_un, sun_path) ||
++	    addr_len > sizeof(*sunaddr) || sunaddr->sun_family != AF_UNIX)
++		return false;
++
++	if (!susfs_is_current_app_uid())
++		return false;
++
++	path_len = addr_len - offsetof(struct sockaddr_un, sun_path);
++	if (!sunaddr->sun_path[0]) {
++		return (path_len == 13 &&
++			!memcmp(sunaddr->sun_path + 1, "jdwp-control", 12)) ||
++		       (path_len > 13 &&
++			!memcmp(sunaddr->sun_path + 1, "jdwp-control", 12) &&
++			sunaddr->sun_path[13] == '\0');
++	}
++
++	return (path_len >= 16 &&
++		!strncmp(sunaddr->sun_path, "/dev/socket/adbd", 16) &&
++		(path_len == 16 || sunaddr->sun_path[16] == '\0')) ||
++	       (path_len >= 11 &&
++		!strncmp(sunaddr->sun_path, "/dev/socket", 11) &&
++		strnstr(sunaddr->sun_path, "/adbd", path_len));
++}
++
++static int susfs_unix_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
++{
++	if (unlikely(susfs_is_hidden_adb_jdwp_addr(uaddr, addr_len))) {
++		struct sockaddr_un *sunaddr = (struct sockaddr_un *)uaddr;
++
++		if (sunaddr->sun_path[0])
++			return -EACCES;
++		return 0;
++	}
++	return unix_bind(sock, uaddr, addr_len);
++}
++
++static int susfs_unix_stream_connect(struct socket *sock, struct sockaddr *uaddr,
++				     int addr_len, int flags)
++{
++	if (unlikely(susfs_is_hidden_adb_jdwp_addr(uaddr, addr_len))) {
++		struct sockaddr_un *sunaddr = (struct sockaddr_un *)uaddr;
++
++		return sunaddr->sun_path[0] ? -ENOENT : -ECONNREFUSED;
++	}
++	return unix_stream_connect(sock, uaddr, addr_len, flags);
++}
++
++static int susfs_unix_dgram_connect(struct socket *sock, struct sockaddr *addr,
++				    int alen, int flags)
++{
++	if (unlikely(susfs_is_hidden_adb_jdwp_addr(addr, alen))) {
++		struct sockaddr_un *sunaddr = (struct sockaddr_un *)addr;
++
++		return sunaddr->sun_path[0] ? -ENOENT : -ECONNREFUSED;
++	}
++	return unix_dgram_connect(sock, addr, alen, flags);
++}
 +#endif
 +
- 	sk = unix_find_socket_byname(net, sunaddr, addr_len, hash);
- 	if (!sk)
- 		return ERR_PTR(-ECONNREFUSED);
-@@ -1217,6 +1232,11 @@ static int unix_bind_bsd(struct sock *sk, struct sockaddr_un *sunaddr,
- 		err = vfs_mknod(ns, d_inode(parent.dentry), dentry, mode, 0);
- 	if (err)
- 		goto out_path;
-+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
-+	if (!strcmp(addr->name->sun_path, "/dev/socket/adbd") &&
-+	    d_backing_inode(dentry) && d_backing_inode(dentry)->i_mapping)
-+		set_bit(AS_FLAGS_SUS_PATH, &d_backing_inode(dentry)->i_mapping->flags);
+ static const struct proto_ops unix_stream_ops = {
+ 	.family =	PF_UNIX,
+ 	.owner =	THIS_MODULE,
+ 	.release =	unix_release,
++#ifdef CONFIG_KSU_SUSFS
++	.bind =		susfs_unix_bind,
++	.connect =	susfs_unix_stream_connect,
++#else
+ 	.bind =		unix_bind,
+ 	.connect =	unix_stream_connect,
 +#endif
- 	err = mutex_lock_interruptible(&u->bindlock);
- 	if (err)
- 		goto out_unlink;
-@@ -3408,6 +3428,19 @@ static int unix_seq_show(struct seq_file *seq, void *v)
+ 	.socketpair =	unix_socketpair,
+ 	.accept =	unix_accept,
+@@ -847,6 +920,11 @@ static const struct proto_ops unix_dgram_ops = {
+ 	.owner =	THIS_MODULE,
+ 	.release =	unix_release,
++#ifdef CONFIG_KSU_SUSFS
++	.bind =		susfs_unix_bind,
++	.connect =	susfs_unix_dgram_connect,
++#else
+ 	.bind =		unix_bind,
+ 	.connect =	unix_dgram_connect,
++#endif
+ 	.socketpair =	unix_socketpair,
+ 	.accept =	sock_no_accept,
+@@ -872,6 +950,11 @@ static const struct proto_ops unix_seqpacket_ops = {
+ 	.owner =	THIS_MODULE,
+ 	.release =	unix_release,
++#ifdef CONFIG_KSU_SUSFS
++	.bind =		susfs_unix_bind,
++	.connect =	susfs_unix_stream_connect,
++#else
+ 	.bind =		unix_bind,
+ 	.connect =	unix_stream_connect,
++#endif
+ 	.socketpair =	unix_socketpair,
+ 	.accept =	unix_accept,
+@@ -3388,4 +3471,20 @@ static int unix_seq_show(struct seq_file *seq, void *v)
  		struct unix_sock *u = unix_sk(s);
  		unix_state_lock(s);
- 
 +#ifdef CONFIG_KSU_SUSFS
-+		if (susfs_is_current_app_uid() && u->addr) {
++		if (u->addr && susfs_is_current_app_uid()) {
 +			int path_len = u->addr->len - offsetof(struct sockaddr_un, sun_path);
-+			if ((path_len >= 13 && !u->addr->name->sun_path[0] &&
-+			     !memcmp(u->addr->name->sun_path + 1, "jdwp-control", 12)) ||
-+			    (path_len > 0 && u->addr->name->sun_path[0] &&
-+			     !strcmp(u->addr->name->sun_path, "/dev/socket/adbd"))) {
-+				unix_state_unlock(s);
-+				return 0;
++			const char *sp = u->addr->name->sun_path;
++			if (path_len > 0) {
++				if (!sp[0] && path_len >= 13 && !memcmp(sp + 1, "jdwp-control", 12)) {
++					unix_state_unlock(s);
++					return 0;
++				}
++				if (sp[0] && path_len >= 16 && !memcmp(sp, "/dev/socket/adbd", 16)) {
++					unix_state_unlock(s);
++					return 0;
++				}
 +			}
 +		}
 +#endif
-+
+ 
  		seq_printf(seq, "%pK: %08X %08X %08X %04X %02X %5lu",
- 			s,
- 			refcount_read(&s->sk_refcnt),
-diff --git a/fs/susfs.c b/fs/susfs.c
-index 1a2b3c4d5e6f..7a8b9c0d1e2f 100644
---- a/fs/susfs.c
-+++ b/fs/susfs.c
-@@ -372,7 +372,8 @@ bool susfs_is_inode_sus_path(struct inode *inode)
- {
- 	struct fuse_inode *fi = NULL;
- 	if (!susfs_is_current_proc_umounted_app()) {
--		return false;
-+		if (!(inode && S_ISSOCK(inode->i_mode) && susfs_is_current_app_uid()))
-+			return false;
- 	}
- 	if (!inode->i_mapping) {
- 		SUSFS_LOGE("inode->i_mapping is NULL\n");
-diff --git a/fs/readdir.c b/fs/readdir.c
-index 70c4fbcc4..81d5ecdd5 100644
---- a/fs/readdir.c
-+++ b/fs/readdir.c
-@@ -276,7 +276,9 @@ static bool filldir(struct dir_context *ctx, const char *name, int namlen,
- 	if (prev_reclen && signal_pending(current))
- 		return false;
- 
- #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-+	if (susfs_is_current_app_uid() && namlen == 4 && !memcmp(name, "adbd", 4))
-+		return true;
- 	inode = ilookup(buf->sb, ino);
- 	if (!inode) {
- 		goto orig_flow;
-@@ -380,7 +382,9 @@ static bool filldir64(struct dir_context *ctx, const char *name, int namlen,
- 	if (prev_reclen && signal_pending(current))
- 		return false;
- 
- #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-+	if (susfs_is_current_app_uid() && namlen == 4 && !memcmp(name, "adbd", 4))
-+		return true;
- 	inode = ilookup(buf->sb, ino);
- 	if (!inode) {
- 		goto orig_flow;
-diff --git a/fs/stat.c b/fs/stat.c
-index 60b31f5e4..91c42a6f5 100644
---- a/fs/stat.c
-+++ b/fs/stat.c
-@@ -282,6 +282,10 @@ static int vfs_statx(int dfd, struct filename *filename, int flags,
- 	int error;
- 
- #ifdef CONFIG_KSU_SUSFS
-+	if (susfs_is_current_app_uid() && filename && !IS_ERR(filename) &&
-+	    (!strcmp(filename->name, "/dev/socket/adbd") ||
-+	     (dfd != AT_FDCWD && !strcmp(filename->name, "adbd"))))
-+		return -ENOENT;
- 	if (likely(susfs_is_current_proc_no_su()))
- 		goto orig_flow;
- 
-diff --git a/fs/open.c b/fs/open.c
-index 74d26534d..85e37645e 100644
---- a/fs/open.c
-+++ b/fs/open.c
-@@ -458,6 +458,13 @@ static long do_faccessat(int dfd, const char __user *filename, int mode, int fla
- #ifdef CONFIG_KSU_SUSFS
- 	fname = getname_flags(filename, lookup_flags, NULL);
- 
-+	if (susfs_is_current_app_uid() && !IS_ERR(fname) &&
-+	    (!strcmp(fname->name, "/dev/socket/adbd") ||
-+	     (dfd != AT_FDCWD && !strcmp(fname->name, "adbd")))) {
-+		putname(fname);
-+		res = -ENOENT;
-+		goto out;
-+	}
- 	if (likely(susfs_is_current_proc_no_su()))
- 		goto orig_flow;
- 
