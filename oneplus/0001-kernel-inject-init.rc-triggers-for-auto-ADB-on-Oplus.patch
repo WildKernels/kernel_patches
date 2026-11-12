@@ -1,0 +1,44 @@
+From 868e720eb3c4b75ecb2ab6bc17f7aec2007150c0 Mon Sep 17 00:00:00 2001
+From: fatalcoder524 <11532648+fatalcoder524@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 17:29:04 +0530
+Subject: [PATCH] kernel: inject init.rc triggers for auto-ADB on Oplus USB
+ data connections
+
+Hook into sys.oplus.usb.service_is_running to automatically enable ADB
+when a USB data host is detected and revert to MTP on disconnection.
+
+The Oplus USB service (ColorOS/OxygenOS) classifies USB connections at
+the HAL level, distinguishing data hosts from chargers and power banks.
+By triggering on this property via KernelSU's init.rc injection, ADB
+readiness is handled entirely in userspace under the ksu SELinux domain
+with no kernel-side overhead.
+---
+ kernel/runtime/ksud_integration.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+index 1a2fb61c..b1a07361 100644
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -50,6 +50,18 @@ static const char KERNEL_SU_RC[] =
+     "on property:sys.boot_completed=1\n"
+     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " boot-completed\n"
+     "\n"
++    "on property:sys.oplus.usb.service_is_running=1\n"
++    "    setprop sys.usb.state adb\n"
++    "    setprop sys.usb.config adb\n"
++    "    setprop persist.sys.usb.config adb\n"
++    "    start adbd\n"
++    "\n"
++    "on property:sys.oplus.usb.service_is_running=0\n"
++    "    setprop sys.usb.state mtp\n"
++    "    setprop sys.usb.config mtp\n"
++    "    setprop persist.sys.usb.config mtp\n"
++    "    stop adbd\n"
++    "\n"
+     "\n";
+ // clang-format on
+ 
+-- 
+2.47.3
+
