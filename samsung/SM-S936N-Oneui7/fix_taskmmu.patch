@@ -1,0 +1,18 @@
+--- a/fs/proc/task_mmu.c
++++ b/fs/proc/task_mmu.c
+@@ -1063,8 +1063,15 @@
+ 				continue;
+ 
+ 			/* Case 4 above */
+-			if (vma->vm_end > last_vma_end)
++			if (vma->vm_end > last_vma_end) {
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++				if (!vma->vm_file || !(SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))) {
++					smap_gather_stats(vma, &mss, last_vma_end);
++				}
++#else
+ 				smap_gather_stats(vma, &mss, last_vma_end);
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
++			}		
+ 		}
+ 	} for_each_vma(vmi, vma);
