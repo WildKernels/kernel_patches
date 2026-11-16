@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# In-tree build for drivers/misc/usbadb_gate (CONFIG_USBADB_GATE).
+# One object. The driver detects and publishes; it runs nothing.
+
+obj-$(CONFIG_USBADB_GATE) += usbadb_gate.o
+
+ccflags-y += -I$(srctree)/$(src)
+
+# ---------------------------------------------------------------------------
+# One config string, two accepted forms, so a per-device defconfig can be terse:
+#
+#   CONFIG_USBADB_GATE_UDC_STATE="a600000.dwc3"
+#       -> /sys/class/udc/a600000.dwc3/state
+#   CONFIG_USBADB_GATE_UDC_STATE="/sys/class/udc/a600000.dwc3/state"
+#       -> used as-is
+# ---------------------------------------------------------------------------
+USBADB_GATE_UDC := $(CONFIG_USBADB_GATE_UDC_STATE)
+USBADB_GATE_UDC := $(patsubst "%",%,$(USBADB_GATE_UDC))
+
+ifeq ($(strip $(USBADB_GATE_UDC)),)
+# An empty value would compile into "/sys/class/udc//state" and the driver would
+# sit there reporting "off" forever, which is exactly the failure nobody notices.
+$(error usbadb_gate: CONFIG_USBADB_GATE_UDC_STATE is empty, set it to the UDC name (e.g. a600000.dwc3) or a full /sys/class/udc/.../state path)
+else ifeq ($(filter /%,$(USBADB_GATE_UDC)),)
+USBADB_GATE_STATE := /sys/class/udc/$(USBADB_GATE_UDC)/state
+else
+USBADB_GATE_STATE := $(USBADB_GATE_UDC)
+endif
+
+$(info -- usbadb_gate: gadget state node: $(USBADB_GATE_STATE))
+ccflags-y += -DUSBADB_GATE_STATE_PATH=\"$(USBADB_GATE_STATE)\"
+
+# Keep a new line here!! Because someone may append config

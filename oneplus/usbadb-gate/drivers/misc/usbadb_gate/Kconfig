@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config USBADB_GATE
+	bool "publish whether a non-dumb USB host is attached"
+	depends on USB
+	depends on USB_GADGET
+	help
+	  Publishes whether the USB gadget is configured by a real host, so that
+	  Android's adb daemon can be kept running only while a PC is attached.
+
+	  Detection is the gadget state reported by the UDC core: only
+	  "configured" means a host sent SET_CONFIGURATION, which a dumb charger
+	  never does.
+
+	  THIS DRIVER RUNS NOTHING. It only publishes. The acting half is
+	  patches/usbadb_gate.rc, which init starts; a child spawned from kernel
+	  context cannot make init act on a setprop or a service control message
+	  (measured, with SELinux permissive: every tool exits 0 and nothing
+	  changes), so the kernel decides and a legitimate caller carries it out.
+
+	  Event driven throughout: the gadget state notifier is edge triggered and
+	  the hand-off node blocks its reader, so there is no polling, no timer and
+	  no wakeup at all while the cable state is steady.
+
+	  One exception, and it is deliberate: writing sys.usb.config makes
+	  Android's USB HAL tear the gadget down and re-enumerate it, which the
+	  notifier cannot tell from a cable pull. A verdict that differs from
+	  what the reader was last told is therefore held for 3000 ms before it is
+	  published, in both directions, and only the verdict standing at the end
+	  of that window is sent. Armed by a single one-shot delayed work, never
+	  re-armed from inside it, and cancelled when the verdict comes back to
+	  what the reader already has. That one rule is the whole correction: it
+	  needs no second clock, because elapsed time is the only thing that
+	  separates a real change from our own echo.
+
+	  The window is 3 s and not less, because the echo is long: teardown to
+	  re-configured takes ~1.7 s on a measured device, and the reader's own
+	  adb_on()/adb_off() takes up to another 0.9 s, during which the port is
+	  still down. A shorter window publishes "off" in the middle of the echo
+	  and the reader's own mtp write re-tears the port, which is the loop this
+	  window exists to stop. If your device re-enumerates faster, this is the
+	  one number worth lowering - and it is safe to lower only if the echo
+	  round trip is measurably under it.
+
+	  Hand-off: /dev/usbadb_gate (0600) returns one line per verdict change,
+	      blocking until then: "on configured 7"
+	  Control:  /sys/kernel/usbadb_gate/state
+	      1 = enabled (default): judge the cable and publish verdicts
+	      0 = disabled: publish nothing, leave the reader alone
+	  Read:     /sys/kernel/usbadb_gate/link
+	      "udc=configured src=event enabled=1 held=none published=on events=12"
+
+	  There is no "force adb on" here, and no field that reports adb's
+	  state, because this driver cannot start a daemon or write a property
+	  and never looks at either. It publishes what the gadget reported; the
+	  reader decides what to do about it.
+
+	  Only meaningful on Android devices with a USB gadget driver.
+
+	  If unsure, say N.
+
+config USBADB_GATE_UDC_STATE
+	string "Gadget state node"
+	depends on USBADB_GATE
+	default "/sys/class/udc/a600000.dwc3/state"
+	help
+	  sysfs node whose content says whether a host configured us.
+	  "configured" means a PC; anything else ("not attached", "attached",
+	  "powered", "suspend") means no usable data link, so adb stays off.
+
+	  Find yours with:
+	    for d in /sys/class/udc/*; do echo -n "$d: "; cat "$d/state"; done
+
+	  Qualcomm SoCs are usually a600000.dwc3, MediaTek 11200000.usb.
