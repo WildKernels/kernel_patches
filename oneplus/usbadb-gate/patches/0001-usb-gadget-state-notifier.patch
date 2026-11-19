@@ -1,0 +1,73 @@
+From: fatalcoder524 <11532648+fatalcoder524@users.noreply.github.com>
+Subject: [PATCH] usb: gadget: udc: add a gadget state notifier
+
+usb_gadget_set_state() is the single point where the UDC state changes, but it
+only does schedule_work(&gadget->work), whose worker just calls
+sysfs_notify(&udc->dev.kobj, NULL, "state").  Userspace can poll(2) that node;
+the kernel has no way to be told that the gadget reached "configured" or
+"not attached".
+
+Anything deciding behaviour from the gadget state - enabling adb only for a
+real host rather than a charger, for example - therefore has to poll, or guess
+from power supply events.  Power supply events do not report enumeration, so
+such a driver silently never fires on boards whose charger driver stays quiet.
+
+Add an atomic notifier chain fired from usb_gadget_set_state(), named after the
+existing usb_gadget_register_driver().  Callbacks receive the state that was
+just set.  usb_gadget_set_state() is reachable from interrupt and UDC
+completion context, hence atomic: callbacks must only schedule work.
+
+Signed-off-by: fatalcoder524 <11532648+fatalcoder524@users.noreply.github.com>
+---
+ drivers/usb/gadget/udc/core.c | 15 +++++++++++++++
+ include/linux/usb/gadget.h    |  7 +++++++
+ 2 files changed, 22 insertions(+)
+
+diff --git a/drivers/usb/gadget/udc/core.c b/drivers/usb/gadget/udc/core.c
+@@ -1015,11 +1015,31 @@
+ 		sysfs_notify(&udc->dev.kobj, NULL, "state");
+ }
+ 
++/*
++ * Atomic notifier chain: usb_gadget_set_state() is reachable from interrupt
++ * and UDC completion context, so callbacks must not sleep.  They get the
++ * state that was just set as the event value.
++ */
++static ATOMIC_NOTIFIER_HEAD(usb_gadget_state_notifier);
++
++int usb_gadget_register_state_notifier(struct notifier_block *nb)
++{
++	return atomic_notifier_chain_register(&usb_gadget_state_notifier, nb);
++}
++EXPORT_SYMBOL_GPL(usb_gadget_register_state_notifier);
++
++void usb_gadget_unregister_state_notifier(struct notifier_block *nb)
++{
++	atomic_notifier_chain_unregister(&usb_gadget_state_notifier, nb);
++}
++EXPORT_SYMBOL_GPL(usb_gadget_unregister_state_notifier);
++
+ void usb_gadget_set_state(struct usb_gadget *gadget,
+ 		enum usb_device_state state)
+ {
+ 	gadget->state = state;
+ 	schedule_work(&gadget->work);
++	atomic_notifier_call_chain(&usb_gadget_state_notifier, state, gadget);
+ }
+ EXPORT_SYMBOL_GPL(usb_gadget_set_state);
+ 
+diff --git a/include/linux/usb/gadget.h b/include/linux/usb/gadget.h
+@@ -867,6 +867,13 @@
+ extern void usb_gadget_set_state(struct usb_gadget *gadget,
+ 		enum usb_device_state state);
+ 
++/*
++ * Fired from usb_gadget_set_state() with the new state as the event value.
++ * Atomic context: schedule work, do not sleep.
++ */
++extern int usb_gadget_register_state_notifier(struct notifier_block *nb);
++extern void usb_gadget_unregister_state_notifier(struct notifier_block *nb);
++
+ /*-------------------------------------------------------------------------*/
+ 
+ /* utility to tell udc core that the bus reset occurs */
