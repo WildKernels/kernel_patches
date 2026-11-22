@@ -1,0 +1,68 @@
+From 59cc62515519a1428425e82862654ef0b42a5eb1 Mon Sep 17 00:00:00 2001
+From: luigimak <10235885+luigimak@users.noreply.github.com>
+Date: Sun, 22 Nov 2026 22:08:44 +0100
+Subject: [PATCH] qcom: Make rollback version update a no-op
+
+---
+ drivers/firmware/qcom_scm.c | 40 -------------------------------------
+ 1 file changed, 40 deletions(-)
+
+diff --git a/drivers/firmware/qcom_scm.c b/drivers/firmware/qcom_scm.c
+index 6cccfeecd729..77209274a81d 100755
+--- a/drivers/firmware/qcom_scm.c
++++ b/drivers/firmware/qcom_scm.c
+@@ -39,9 +39,6 @@
+ static bool download_mode = IS_ENABLED(CONFIG_QCOM_SCM_DOWNLOAD_MODE_DEFAULT);
+ module_param(download_mode, bool, 0);
+ 
+-static DEFINE_MUTEX(update_arb_lock);
+-static bool update_arb_done = false;
+-
+ static unsigned int pas_shutdown_retry_delay_ms = 5000;
+ module_param(pas_shutdown_retry_delay_ms, uint, 0644);
+ 
+@@ -602,43 +599,6 @@ EXPORT_SYMBOL_GPL(qcom_scm_get_download_mode);
+ 
+ int qcom_scm_update_rollback_version(void)
+ {
+-	int ret;
+-	struct qcom_scm_res res;
+-	struct qcom_scm_desc desc = {
+-		.svc = QCOM_SCM_SVC_BOOT,
+-		.cmd = 0x1E,
+-		.owner = ARM_SMCCC_OWNER_SIP,
+-		.arginfo = QCOM_SCM_ARGS(0),
+-	};
+-
+-	if (!__scm) {
+-		pr_err("qcom_scm_update_rollback_version: SCM not initialized\n");
+-		return -ENODEV;
+-	}
+-	memset(&res, 0, sizeof(res));
+-
+-	mutex_lock(&update_arb_lock);
+-	if(update_arb_done == true) {
+-		mutex_unlock(&update_arb_lock);
+-		pr_info("qcom update arb: request already succeed\n");
+-		return 0;
+-	}
+-	ret = qcom_scm_call(__scm->dev, &desc, &res);
+-	if (ret) {
+-		pr_err("qcom_scm_update_rollback_version: qcom_scm_call failed ret=%d\n", ret);
+-		mutex_unlock(&update_arb_lock);
+-		return ret;
+-	}
+-	if (res.result[0]) {
+-		pr_err("qcom_scm_update_rollback_version: TZ returned status=%llu\n", res.result[0]);
+-		mutex_unlock(&update_arb_lock);
+-		return -ENODEV;
+-	}
+-
+-	update_arb_done = true;
+-	mutex_unlock(&update_arb_lock);
+-
+-	pr_info("qcom arb_update: success\n");
+ 	return 0;
+ }
+ EXPORT_SYMBOL(qcom_scm_update_rollback_version);
+ 
